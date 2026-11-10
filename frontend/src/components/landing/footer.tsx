@@ -1,0 +1,45 @@
+export function Footer() {
+  return (
+    <footer className="container-page pb-12">
+      <nav
+        aria-label="Footer"
+        className="flex items-center justify-center gap-8 py-8 text-[15px]"
+      >
+        <a
+          href="https://x.com/"
+          className="focus-ring -m-2 rounded-md p-2 hover:text-muted-foreground"
+          aria-label="Paya on X"
+        >
+          <svg viewBox="0 0 24 24" className="size-5" fill="currentColor" aria-hidden="true">
+            <path d="M18.244 2H21.5l-7.5 8.57L22.5 22h-6.9l-5.4-7.06L4 22H.744l8.02-9.17L.5 2h7.08l4.88 6.45L18.244 2Zm-1.21 18h1.8L7.04 3.9H5.1L17.034 20Z" />
+          </svg>
+        </a>
+        <a href="/terms" className="focus-ring -m-2 rounded-md p-2 hover:text-muted-foreground">
+          Terms of Service
+        </a>
+        <a href="/privacy" className="focus-ring -m-2 rounded-md p-2 hover:text-muted-foreground">
+          Privacy Policy
+        </a>
+      </nav>
+
+      <div className="border-t border-border pt-8 text-sm text-muted-foreground">
+        <div className="flex justify-between">
+          <p>Disclaimers</p>
+          <p>All rights reserved</p>
+        </div>
+        <ol className="mt-4 list-decimal space-y-3 pl-5 text-pretty">
+          <li>
+            Paya is a technology platform, not a bank or a digital asset
+            custodian. Funds are held in audited smart contracts on NEAR until a
+            payout is confirmed.
+          </li>
+          <li>
+            Bank payouts are currently available in Nigeria (NGN). Rates are
+            indicative until an order is confirmed and may include a service fee
+            shown before you send.
+          </li>
+        </ol>
+      </div>
+    </footer>
+  );
+}
