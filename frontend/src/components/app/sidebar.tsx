@@ -2,19 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import {
-  ChevronUp,
-  Clock,
-  Coins,
-  Home,
-  MessageSquare,
-  Search,
-  TrendingUp,
-  Users,
-  Wallet,
-} from "lucide-react";
+import { Clock, Coins, Home, Landmark, LogOut, MessageSquare, TrendingUp } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { useWallet } from "@/components/app/wallet-provider";
+import { useSession } from "@/components/app/session-provider";
 import { cn } from "@/lib/utils";
 
 const main = [{ href: "/app", label: "Home", icon: Home }];
@@ -24,7 +14,7 @@ const markets = [
 ];
 const more = [
   { href: "/app/activity", label: "Activity", icon: Clock },
-  { href: "/app/contacts", label: "Contacts", icon: Users },
+  { href: "/app/contacts", label: "Bank account", icon: Landmark },
 ];
 
 export const allNav = [...main, ...markets, ...more];
@@ -35,24 +25,15 @@ function isActive(pathname: string, href: string) {
 
 export function Sidebar() {
   const pathname = usePathname();
-  const { accountId, connecting, connect, disconnect } = useWallet();
+  const { email, me, logout } = useSession();
 
   return (
-    <aside className="hidden w-72 shrink-0 flex-col bg-sidebar p-4 lg:flex">
+    <aside className="hidden w-72 shrink-0 flex-col p-4 lg:flex">
       <Link href="/" className="focus-ring inline-flex rounded-full px-2 py-1" aria-label="Paya home">
         <Logo />
       </Link>
 
-      <button
-        type="button"
-        className="focus-ring mt-6 flex min-h-11 w-full items-center gap-3 rounded-xl border border-border bg-panel px-3 text-sm text-muted-foreground transition-colors duration-100 hover:text-foreground"
-      >
-        <Search className="size-4" aria-hidden="true" />
-        <span className="flex-1 text-left">Search markets</span>
-        <kbd className="rounded-md border border-border px-1.5 py-0.5 font-mono text-[11px]">⌘K</kbd>
-      </button>
-
-      <nav aria-label="App" className="mt-4 flex flex-1 flex-col gap-6">
+      <nav aria-label="App" className="mt-8 flex flex-1 flex-col gap-6">
         <NavGroup items={main} pathname={pathname} />
         <NavGroup title="Markets" items={markets} pathname={pathname} />
         <NavGroup items={more} pathname={pathname} />
@@ -60,57 +41,34 @@ export function Sidebar() {
 
       <a
         href="https://github.com/letsdap/paya/issues"
-        className="focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-foreground transition-colors duration-100 hover:bg-panel"
+        className="focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-foreground transition-colors duration-100 hover:bg-panel/70"
       >
         <MessageSquare className="size-4" aria-hidden="true" />
         Give feedback
       </a>
 
-      {accountId ? (
+      <div className="glass-card mt-2 rounded-2xl p-3">
+        <p className="truncate text-sm font-medium">{email}</p>
+        <p className="truncate font-mono text-xs text-muted-foreground tabular-nums">
+          {me?.depositAccount ?? "creating your address…"}
+        </p>
         <button
           type="button"
-          onClick={disconnect}
-          className="focus-ring mt-2 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-border bg-panel px-3 text-left transition-colors duration-100 hover:bg-panel/70"
-          aria-label={`Connected as ${accountId}. Disconnect wallet`}
+          onClick={logout}
+          className="focus-ring mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground transition-colors duration-100 hover:text-foreground"
         >
-          <span className="flex size-9 items-center justify-center rounded-full bg-accent-soft text-accent">
-            <Wallet className="size-4" aria-hidden="true" />
-          </span>
-          <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-medium">{accountId}</span>
-            <span className="block text-xs text-muted-foreground">NEAR wallet</span>
-          </span>
-          <ChevronUp className="size-4 text-muted-foreground" aria-hidden="true" />
+          <LogOut className="size-3.5" aria-hidden="true" />
+          Sign out
         </button>
-      ) : (
-        <button
-          type="button"
-          onClick={connect}
-          disabled={connecting}
-          className="focus-ring mt-2 flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-primary text-sm font-medium text-primary-foreground transition-colors duration-100 hover:bg-primary/85 disabled:opacity-60"
-        >
-          <Wallet className="size-4" aria-hidden="true" />
-          {connecting ? "Connecting…" : "Connect wallet"}
-        </button>
-      )}
+      </div>
     </aside>
   );
 }
 
-function NavGroup({
-  title,
-  items,
-  pathname,
-}: {
-  title?: string;
-  items: typeof allNav;
-  pathname: string;
-}) {
+function NavGroup({ title, items, pathname }: { title?: string; items: typeof allNav; pathname: string }) {
   return (
     <div>
-      {title && (
-        <p className="mb-2 px-3 text-xs font-medium text-muted-foreground">{title}</p>
-      )}
+      {title && <p className="mb-2 px-3 text-xs font-medium text-muted-foreground">{title}</p>}
       <ul className="space-y-1">
         {items.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
@@ -121,9 +79,7 @@ function NavGroup({
                 aria-current={active ? "page" : undefined}
                 className={cn(
                   "focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm transition-colors duration-100",
-                  active
-                    ? "bg-panel font-medium text-foreground shadow-sm"
-                    : "text-foreground/80 hover:bg-panel hover:text-foreground",
+                  active ? "glass-card font-medium text-foreground" : "text-foreground/80 hover:bg-panel/70 hover:text-foreground",
                 )}
               >
                 <Icon className="size-4" aria-hidden="true" />
@@ -143,7 +99,7 @@ export function MobileNav() {
   return (
     <nav
       aria-label="App"
-      className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-sidebar pb-[env(safe-area-inset-bottom)] lg:hidden"
+      className="glass fixed inset-x-0 bottom-0 z-40 border-t border-border pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
       <ul className="grid grid-cols-5">
         {allNav.map(({ href, label, icon: Icon }) => {

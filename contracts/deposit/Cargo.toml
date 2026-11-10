@@ -1,0 +1,15 @@
+[package]
+name = "paya-deposit"
+description = "Paya deposit account: receives NEAR, forwards it to a swap deposit address on the operator's instruction"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/letsdap/paya"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }

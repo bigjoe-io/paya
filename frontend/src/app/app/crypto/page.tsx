@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Search } from "lucide-react";
 import { Topbar } from "@/components/app/topbar";
 import { Amount, AssetIcon, Card, Change, PageTitle } from "@/components/app/ui";
-import { useWallet } from "@/components/app/wallet-provider";
+import { useWallet } from "@/components/app/session-provider";
 import { assets, formatUsd } from "@/lib/mock";
 
 export default function CryptoPage() {

@@ -1,0 +1,15 @@
+[package]
+name = "paya-factory"
+description = "Paya factory: creates one deposit account per user and tracks them"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/letsdap/paya"
+
+[lib]
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+near-sdk = { workspace = true }
+
+[dev-dependencies]
+near-sdk = { workspace = true, features = ["unit-testing"] }

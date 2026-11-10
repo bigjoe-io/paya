@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { NearIcon, TokenIcon } from "@/components/landing/icons";
-import { useWallet } from "@/components/app/wallet-provider";
+import { useWallet } from "@/components/app/session-provider";
 import type { TokenSymbol } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 

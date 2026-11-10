@@ -3,14 +3,14 @@
 import { useId, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { AssetIcon, Card } from "@/components/app/ui";
-import { useWallet } from "@/components/app/wallet-provider";
+import { useWallet } from "@/components/app/session-provider";
 import { assets, formatUsd, type EarnProduct } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 
 type Mode = "Stake" | "Unstake";
 
 export function StakePanel({ product }: { product: EarnProduct }) {
-  const { accountId, connect, connecting } = useWallet();
+  const { accountId } = useWallet();
   const [mode, setMode] = useState<Mode>("Stake");
   const [value, setValue] = useState("");
   const inputId = useId();
@@ -98,24 +98,14 @@ export function StakePanel({ product }: { product: EarnProduct }) {
         </div>
       )}
 
-      {accountId ? (
-        <button
-          type="button"
-          disabled={amount <= 0 || tooMuch}
-          className="focus-ring mt-4 min-h-12 w-full rounded-xl bg-foreground text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:bg-foreground/20 disabled:text-muted-foreground"
-        >
-          {verb} {product.asset}
-        </button>
-      ) : (
-        <button
-          type="button"
-          onClick={connect}
-          disabled={connecting}
-          className="focus-ring mt-4 min-h-12 w-full rounded-xl bg-foreground text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:opacity-60"
-        >
-          {connecting ? "Connecting…" : "Connect wallet to stake"}
-        </button>
-      )}
+      <button
+        type="button"
+        disabled={!accountId || amount <= 0 || tooMuch}
+        className="focus-ring mt-4 min-h-12 w-full rounded-xl bg-foreground text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:bg-foreground/20 disabled:text-muted-foreground"
+      >
+        {verb} {product.asset}
+      </button>
+      <p className="mt-2 text-center text-xs text-muted-foreground">Staking goes live after cash-out. Preview only.</p>
     </div>
   );
 }
