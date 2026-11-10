@@ -17,6 +17,10 @@
   --inverse-foreground: #ffffff;
   --inverse-muted: #a1a1aa;
   --ring: #0a66ff;
+  --panel: #ffffff;
+  --sidebar: #f3f4f6;
+  --warning: #b45309;
+  --warning-soft: #fef3c7;
   --gradient-dark: linear-gradient(180deg, #0b1020 0%, #1c2440 100%);
 }
 
@@ -24,13 +28,16 @@
  * The landing page is light by design (see brand.md). Dark tokens are kept for
  * the app, which opts in with <html data-theme="dark">.
  */
-:root[data-theme="dark"] {
-  --background: #0a0a0a;
+:root[data-theme="dark"],
+.dark {
+  --background: #0b0b0c;
   --foreground: #ededed;
-  --card: #141414;
+  --card: #151517;
   --card-foreground: #ededed;
   --muted-foreground: #a1a1aa;
-  --border: #262626;
+  --border: #27272a;
+  --panel: #111113;
+  --sidebar: #0b0b0c;
   --primary: #ededed;
   --primary-foreground: #0a0a0a;
   --accent: #3b82f6;
@@ -41,6 +48,8 @@
   --inverse-foreground: #0a0a0a;
   --inverse-muted: #52525b;
   --ring: #3b82f6;
+  --warning: #fbbf24;
+  --warning-soft: #2a2410;
 }
 
 @theme inline {
@@ -60,6 +69,10 @@
   --color-inverse-foreground: var(--inverse-foreground);
   --color-inverse-muted: var(--inverse-muted);
   --color-ring: var(--ring);
+  --color-panel: var(--panel);
+  --color-sidebar: var(--sidebar);
+  --color-warning: var(--warning);
+  --color-warning-soft: var(--warning-soft);
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 }

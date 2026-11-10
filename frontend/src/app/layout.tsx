@@ -2,10 +2,13 @@ import type { Metadata } from "next";
 import { Inter, Geist_Mono } from "next/font/google";
 import "./globals.css";
 
+// Inter with the optical-size axis: large text renders as Inter Display
+// (the pairing Fuse uses), body text as regular Inter.
 const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
   display: "swap",
+  axes: ["opsz"],
 });
 
 const geistMono = Geist_Mono({

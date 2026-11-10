@@ -30,7 +30,8 @@ Grays are cool (blue-tinted). One accent: blue. Green only for money-positive me
 
 ## Typography
 
-- Sans: **Inter** via `next/font` (`--font-sans`). Headings `tracking-tight`, weight 600. Display sizes `text-4xl md:text-5xl lg:text-6xl`.
+- Sans: **Inter** via `next/font` with the `opsz` axis (`--font-sans`). Large text automatically renders as **Inter Display** — the same Inter + Inter Display pairing Fuse uses. Headings `tracking-tight`, weight 600. Display sizes `text-4xl md:text-5xl lg:text-6xl`.
+- App (dashboard) is dark: wrap in `.dark` to switch the token set. Landing stays light.
 - Mono: **Geist Mono** (`--font-mono`) for amounts, rates, account numbers. Always `tabular-nums`.
 
 ## Shape
