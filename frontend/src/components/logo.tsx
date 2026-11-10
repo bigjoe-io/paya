@@ -1,21 +1,22 @@
-import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 /**
- * Paya mark: a glossy liquid "P" with a droplet. Source of truth is
- * public/logo.svg (also used as the app icon via src/app/icon.svg).
+ * Paya mark "Convert": a whole circle becoming a half circle — one thing
+ * turning into another, in one move. Flat, single colour (currentColor), so it
+ * works black on light and white on dark. Static copies: public/logo.svg and
+ * the app icon at src/app/icon.svg.
  */
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <Image
-      src="/logo.svg"
-      alt=""
-      width={32}
-      height={32}
-      unoptimized
-      priority
+    <svg
+      viewBox="0 0 100 100"
+      aria-hidden="true"
+      fill="currentColor"
       className={cn("size-8", className)}
-    />
+    >
+      <circle cx="32" cy="50" r="30" />
+      <path d="M68 20a30 30 0 0 1 0 60z" />
+    </svg>
   );
 }
 
