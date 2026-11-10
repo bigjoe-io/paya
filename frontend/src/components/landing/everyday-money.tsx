@@ -1,6 +1,6 @@
 import { ArrowRight, Landmark, Lock, Percent } from "lucide-react";
 import { TabbedPanel, type Tab } from "@/components/landing/tabbed-panel";
-import { CoinIcon, NearIcon } from "@/components/landing/icons";
+import { NearIcon, TokenIcon } from "@/components/landing/icons";
 
 const tabs: Tab[] = [
   {
@@ -86,9 +86,9 @@ function BridgePanel() {
       </span>
       <ArrowRight className="size-6 text-muted-foreground" aria-hidden="true" />
       <div className="flex">
-        <CoinIcon label="SOL" className="size-16 ring-4 ring-card md:size-20" />
-        <CoinIcon
-          label="USDC"
+        <TokenIcon symbol="sol" className="size-16 ring-4 ring-card md:size-20" />
+        <TokenIcon
+          symbol="usdc"
           className="-ml-4 size-16 ring-4 ring-card md:size-20"
         />
       </div>

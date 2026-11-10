@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 import { ArrowRight, ShieldCheck } from "lucide-react";
-import { CoinIcon, NearIcon } from "@/components/landing/icons";
+import { NearIcon, TokenIcon } from "@/components/landing/icons";
 
 export function FeatureCards() {
   return (
@@ -137,9 +137,8 @@ function BridgeIllustration() {
       </span>
       <ArrowRight className="size-5" aria-hidden="true" />
       <div className="flex">
-        <CoinIcon label="SOL" className="ring-2 ring-card" />
-        <CoinIcon label="USDC" className="-ml-2 ring-2 ring-card" />
-        <CoinIcon label="USDT" className="-ml-2 ring-2 ring-card" />
+        <TokenIcon symbol="sol" className="ring-2 ring-card" />
+        <TokenIcon symbol="usdc" className="-ml-3 ring-2 ring-card" />
       </div>
     </div>
   );

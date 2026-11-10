@@ -1,26 +1,21 @@
+import Image from "next/image";
 import { cn } from "@/lib/utils";
 
 /**
- * Paya mark: a coin leaving a rounded square — "money out, in one move".
- * Placeholder until the final logo lands in /design.
+ * Paya mark: a glossy liquid "P" with a droplet. Source of truth is
+ * public/logo.svg (also used as the app icon via src/app/icon.svg).
  */
 export function LogoMark({ className }: { className?: string }) {
   return (
-    <svg
-      viewBox="0 0 32 32"
-      aria-hidden="true"
+    <Image
+      src="/logo.svg"
+      alt=""
+      width={32}
+      height={32}
+      unoptimized
+      priority
       className={cn("size-8", className)}
-      fill="none"
-    >
-      <rect x="2" y="2" width="28" height="28" rx="9" fill="currentColor" />
-      <path
-        d="M10 22 L22 10 M14 10 H22 V18"
-        stroke="var(--background)"
-        strokeWidth="2.75"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+    />
   );
 }
 

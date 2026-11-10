@@ -35,7 +35,7 @@ export function Security() {
         tabs={tabs}
       />
 
-      <section className="container-page grid gap-4">
+      <section className="container-page grid gap-4 md:grid-cols-2">
         <article className="min-h-96 rounded-4xl bg-inverse p-8 text-inverse-foreground md:min-h-120 md:p-12">
           <span className="flex size-16 items-center justify-center rounded-2xl bg-inverse-foreground/10">
             <Lock className="size-8" aria-hidden="true" />
@@ -43,7 +43,7 @@ export function Security() {
           <h3 className="mt-28 text-2xl font-semibold tracking-tight md:mt-40 md:text-3xl">
             NEAR&apos;s security standard
           </h3>
-          <p className="mt-3 max-w-2xl text-lg text-inverse-muted text-pretty">
+          <p className="mt-3 max-w-xl text-lg text-inverse-muted text-pretty">
             Paya runs on NEAR smart contracts, so every order, rate, and payout
             is recorded on-chain and verifiable by anyone.
           </p>
@@ -58,7 +58,7 @@ export function Security() {
           <h3 className="mt-24 text-2xl font-semibold tracking-tight md:mt-36 md:text-3xl">
             Your money. Your control.
           </h3>
-          <p className="mt-3 max-w-2xl text-lg text-muted-foreground text-pretty">
+          <p className="mt-3 max-w-xl text-lg text-muted-foreground text-pretty">
             Paya never takes custody. Your ownership is enforced by NEAR&apos;s
             validator network — not by an exchange, and not by us.
           </p>
