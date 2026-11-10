@@ -77,7 +77,15 @@ async function request<T>(path: string, auth: Auth, init: RequestInit = {}): Pro
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
   else if (auth.email) headers["x-demo-email"] = auth.email;
-  const r = await fetch(`${RELAY_URL}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } });
+  let r: Response;
+  try {
+    r = await fetch(`${RELAY_URL}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } });
+  } catch {
+    throw new ApiError(
+      `Can't reach the Paya relay at ${RELAY_URL}. Start it with "npm run dev" in services/relay.`,
+      0,
+    );
+  }
   const body = (await r.json().catch(() => ({}))) as { error?: string } & T;
   if (!r.ok) throw new ApiError(body.error ?? `Request failed (${r.status})`, r.status);
   return body as T;
