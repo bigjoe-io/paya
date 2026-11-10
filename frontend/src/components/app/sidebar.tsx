@@ -45,7 +45,7 @@ export function Sidebar() {
 
       <button
         type="button"
-        className="focus-ring mt-6 flex min-h-11 w-full items-center gap-3 rounded-xl border border-border bg-card px-3 text-sm text-muted-foreground transition-colors duration-100 hover:text-foreground"
+        className="focus-ring mt-6 flex min-h-11 w-full items-center gap-3 rounded-xl border border-border bg-panel px-3 text-sm text-muted-foreground transition-colors duration-100 hover:text-foreground"
       >
         <Search className="size-4" aria-hidden="true" />
         <span className="flex-1 text-left">Search markets</span>
@@ -60,7 +60,7 @@ export function Sidebar() {
 
       <a
         href="https://github.com/letsdap/paya/issues"
-        className="focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-foreground transition-colors duration-100 hover:bg-card"
+        className="focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-foreground transition-colors duration-100 hover:bg-panel"
       >
         <MessageSquare className="size-4" aria-hidden="true" />
         Give feedback
@@ -70,7 +70,7 @@ export function Sidebar() {
         <button
           type="button"
           onClick={disconnect}
-          className="focus-ring mt-2 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-border bg-card px-3 text-left transition-colors duration-100 hover:bg-card/70"
+          className="focus-ring mt-2 flex min-h-14 w-full items-center gap-3 rounded-2xl border border-border bg-panel px-3 text-left transition-colors duration-100 hover:bg-panel/70"
           aria-label={`Connected as ${accountId}. Disconnect wallet`}
         >
           <span className="flex size-9 items-center justify-center rounded-full bg-accent-soft text-accent">
@@ -122,8 +122,8 @@ function NavGroup({
                 className={cn(
                   "focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm transition-colors duration-100",
                   active
-                    ? "bg-card font-medium text-foreground"
-                    : "text-foreground/80 hover:bg-card hover:text-foreground",
+                    ? "bg-panel font-medium text-foreground shadow-sm"
+                    : "text-foreground/80 hover:bg-panel hover:text-foreground",
                 )}
               >
                 <Icon className="size-4" aria-hidden="true" />
