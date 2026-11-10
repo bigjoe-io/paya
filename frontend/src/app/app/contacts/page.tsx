@@ -53,7 +53,7 @@ export default function ContactsPage() {
               <Link
                 key={c.id}
                 href={`/app/cash-out?to=${c.id}`}
-                className="focus-ring group flex items-center gap-4 px-5 py-4 transition-colors duration-100 first:rounded-t-2xl last:rounded-b-2xl hover:bg-foreground/[0.03]"
+                className="focus-ring group flex items-center gap-4 px-5 py-4 transition-colors duration-100 first:rounded-t-2xl last:rounded-b-2xl hover:bg-foreground/3"
               >
                 <span className="flex size-10 items-center justify-center rounded-full bg-foreground/10 text-sm font-medium">
                   {initials(c.name)}

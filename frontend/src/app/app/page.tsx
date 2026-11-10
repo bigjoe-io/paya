@@ -102,7 +102,7 @@ function Row({
   return (
     <Link
       href={href}
-      className="focus-ring flex min-h-20 items-center justify-between gap-4 px-6 transition-colors duration-100 first:rounded-t-2xl last:rounded-b-2xl hover:bg-foreground/[0.03]"
+      className="focus-ring flex min-h-20 items-center justify-between gap-4 px-6 transition-colors duration-100 first:rounded-t-2xl last:rounded-b-2xl hover:bg-foreground/3"
     >
       <span>
         <span className="block text-base font-medium">{title}</span>

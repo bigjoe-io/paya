@@ -62,7 +62,7 @@ export default function EarnPage() {
             </thead>
             <tbody>
               {rows.map((p) => (
-                <tr key={p.id} className="relative border-t border-border transition-colors duration-100 hover:bg-foreground/[0.03]">
+                <tr key={p.id} className="relative border-t border-border transition-colors duration-100 hover:bg-foreground/3">
                   <td className="px-5 py-4">
                     <Link
                       href={`/app/earn/${p.id}`}
