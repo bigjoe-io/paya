@@ -20,25 +20,27 @@
   --gradient-dark: linear-gradient(180deg, #0b1020 0%, #1c2440 100%);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-    --card: #141414;
-    --card-foreground: #ededed;
-    --muted-foreground: #a1a1aa;
-    --border: #262626;
-    --primary: #ededed;
-    --primary-foreground: #0a0a0a;
-    --accent: #3b82f6;
-    --accent-soft: #1e3a8a;
-    --success: #22c55e;
-    --success-soft: #14532d;
-    --inverse: #fafafa;
-    --inverse-foreground: #0a0a0a;
-    --inverse-muted: #52525b;
-    --ring: #3b82f6;
-  }
+/*
+ * The landing page is light by design (see brand.md). Dark tokens are kept for
+ * the app, which opts in with <html data-theme="dark">.
+ */
+:root[data-theme="dark"] {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --card: #141414;
+  --card-foreground: #ededed;
+  --muted-foreground: #a1a1aa;
+  --border: #262626;
+  --primary: #ededed;
+  --primary-foreground: #0a0a0a;
+  --accent: #3b82f6;
+  --accent-soft: #1e3a8a;
+  --success: #22c55e;
+  --success-soft: #14532d;
+  --inverse: #fafafa;
+  --inverse-foreground: #0a0a0a;
+  --inverse-muted: #52525b;
+  --ring: #3b82f6;
 }
 
 @theme inline {

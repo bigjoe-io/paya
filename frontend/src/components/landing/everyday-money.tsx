@@ -33,7 +33,7 @@ export function EverydayMoney() {
       heading={
         <>
           Use NEAR
-          <br />
+          {" "}<br className="hidden md:block" />
           as everyday money
         </>
       }

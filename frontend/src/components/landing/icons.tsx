@@ -30,7 +30,7 @@ export function CoinIcon({
     <span
       aria-hidden="true"
       className={cn(
-        "flex size-12 items-center justify-center rounded-full bg-background font-mono text-sm font-medium text-muted-foreground",
+        "flex size-12 items-center justify-center rounded-full bg-background font-mono text-xs font-medium text-muted-foreground",
         className,
       )}
     >

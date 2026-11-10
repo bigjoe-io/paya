@@ -28,7 +28,7 @@ export function FinalCta() {
         </span>
         <h2 className="mt-8 text-4xl font-semibold tracking-tight text-balance md:text-5xl">
           Get started
-          <br />
+          {" "}<br className="hidden md:block" />
           with Paya today.
         </h2>
         <p className="mt-4 text-lg text-muted-foreground text-pretty">

@@ -11,7 +11,7 @@ export function FeatureCards() {
           title={
             <>
               Cash out NEAR to naira
-              <br />
+              {" "}<br className="hidden md:block" />
               in one click
             </>
           }
@@ -21,7 +21,7 @@ export function FeatureCards() {
           title={
             <>
               Bridge to Solana
-              <br />
+              {" "}<br className="hidden md:block" />
               without leaving Paya
             </>
           }
@@ -31,7 +31,7 @@ export function FeatureCards() {
           title={
             <>
               Stake NEAR and keep
-              <br />
+              {" "}<br className="hidden md:block" />
               earning until you cash out
             </>
           }
@@ -41,7 +41,7 @@ export function FeatureCards() {
           title={
             <>
               Non-custodial by design.
-              <br />
+              {" "}<br className="hidden md:block" />
               We never hold your money.
             </>
           }
@@ -82,8 +82,8 @@ function FlowChart() {
       className="absolute top-8 right-8 left-8 flex items-center justify-between gap-3 md:top-12 md:right-12 md:left-auto md:w-md"
     >
       {steps.map((step, i) => (
-        <div key={step.label} className="flex flex-1 items-center gap-3">
-          <div className="min-w-0 flex-1 rounded-2xl bg-white/10 px-4 py-3 ring-1 ring-white/10">
+        <div key={step.label} className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
+          <div className="min-w-0 flex-1 rounded-2xl bg-white/10 px-3 py-3 ring-1 ring-white/10 md:px-4">
             <p className="truncate text-sm font-medium">{step.label}</p>
             <p className="truncate text-xs text-white/60">{step.sub}</p>
           </div>
@@ -138,8 +138,8 @@ function BridgeIllustration() {
       <ArrowRight className="size-5" aria-hidden="true" />
       <div className="flex">
         <CoinIcon label="SOL" className="ring-2 ring-card" />
-        <CoinIcon label="USDC" className="-ml-3 ring-2 ring-card" />
-        <CoinIcon label="USDT" className="-ml-3 ring-2 ring-card" />
+        <CoinIcon label="USDC" className="-ml-2 ring-2 ring-card" />
+        <CoinIcon label="USDT" className="-ml-2 ring-2 ring-card" />
       </div>
     </div>
   );
