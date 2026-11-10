@@ -1,6 +1,6 @@
 # Paya
 
-One click from NEAR to naira. Paya is a non-custodial off-ramp built on NEAR: send NEAR (or any token via NEAR Intents), receive cash in your bank account in under a minute.
+One click from NEAR to fiat. Paya is a non-custodial off-ramp built on NEAR: send NEAR (or any token via NEAR Intents), receive cash in your bank account in under a minute. Nigeria (NGN) first.
 
 Built for the [NEAR Hackathon](https://nearhackathon.com) — Track 08, Real-World Money.
 

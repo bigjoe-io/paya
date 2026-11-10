@@ -8,7 +8,7 @@ export function Hero() {
     <section className="container-page pt-16 pb-6 md:pt-24">
       <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
         <h1 className="text-4xl font-semibold tracking-tight text-balance md:text-5xl lg:text-6xl">
-          One click from NEAR to naira.
+          One click from NEAR to fiat.
         </h1>
         <p className="mt-4 max-w-md text-lg text-muted-foreground text-pretty">
           Send NEAR. Cash lands in your bank account in under a minute.
