@@ -18,9 +18,37 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Paya — One click from NEAR to fiat",
+  metadataBase: new URL("https://www.usepaya.xyz"),
+  title: {
+    default: "Paya — Buy NEAR with naira, cash out NEAR to your bank",
+    template: "%s | Paya",
+  },
   description:
-    "Paya is a one-click off-ramp on NEAR. Send NEAR, receive naira in your bank account in under a minute. Sign up with email, transparent rates, five African countries.",
+    "Buy NEAR with a bank transfer and cash NEAR out to your bank account in naira. Sign in with email — no exchange, no P2P, no seed phrase. Live in Nigeria; more African countries coming.",
+  keywords: [
+    "buy NEAR in Nigeria",
+    "buy NEAR with naira",
+    "NEAR to naira",
+    "cash out NEAR",
+    "sell NEAR Nigeria",
+    "NEAR off-ramp Africa",
+    "crypto to bank account Nigeria",
+    "NEAR Protocol Africa",
+  ],
+  applicationName: "Paya",
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "Paya",
+    locale: "en_NG",
+    url: "/",
+    title: "Paya — Buy NEAR with naira, cash out NEAR to your bank",
+    description: "Move money between NEAR and your bank account, both ways. Sign in with email.",
+  },
+  twitter: { card: "summary_large_image" },
+  robots: { index: true, follow: true },
+  // Set GOOGLE_SITE_VERIFICATION on Vercel to the code Search Console gives you (HTML tag method).
+  verification: process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : undefined,
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

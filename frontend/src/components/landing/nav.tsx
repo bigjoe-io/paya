@@ -3,10 +3,11 @@ import { Logo } from "@/components/logo";
 import { WaitlistButton } from "@/components/landing/waitlist";
 
 const links = [
-  { href: "#features", label: "Features" },
-  { href: "#countries", label: "Countries" },
-  { href: "#how-it-works", label: "How it works" },
-  { href: "#security", label: "Security" },
+  { href: "/#features", label: "Features" },
+  { href: "/#countries", label: "Countries" },
+  { href: "/#how-it-works", label: "How it works" },
+  { href: "/#security", label: "Security" },
+  { href: "/blog", label: "Blog" },
 ];
 
 export function Nav() {

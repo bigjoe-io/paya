@@ -35,8 +35,7 @@ export function Footer() {
             payout partners.
           </li>
           <li>
-            Payouts are available in Nigeria (NGN), Ghana (GHS), Kenya (KES), Tanzania (TZS), South
-            Africa (ZAR) and the United States (USD). Rates are indicative until you swap; every fee is shown before you confirm.
+            Payouts are live in Nigeria (NGN). Ghana, Kenya, Tanzania and South Africa are coming next. Rates are indicative until you swap; every fee is shown before you confirm.
           </li>
         </ol>
       </div>
