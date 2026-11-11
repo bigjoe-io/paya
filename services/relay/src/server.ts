@@ -82,7 +82,9 @@ const pajOf = (c: Context) => {
 /* ---------- private testing + waitlist ---------- */
 
 app.post("/access/redeem", async (c) => {
-  const { code } = z.object({ code: z.string().min(4).max(40) }).parse(await c.req.json());
+  const parsed = z.object({ code: z.string().min(4).max(40) }).safeParse(await c.req.json().catch(() => ({})));
+  if (!parsed.success) return c.json({ error: "That doesn't look like an access code. Codes look like PAYA-XXXX-XXXX." }, 400);
+  const { code } = parsed.data;
   await new Promise((r) => setTimeout(r, 400)); // slow down guessing
   const r = redeem(code);
   audit(r ? "access_redeemed" : "access_refused", undefined, r ? { label: r.label } : {});

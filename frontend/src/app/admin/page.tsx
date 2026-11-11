@@ -16,8 +16,12 @@ export default function TesterAccessPage() {
 
   async function submit(e: FormEvent) {
     e.preventDefault();
-    setBusy(true);
     setError(null);
+    if (!/^PAYA-?[A-Z0-9]{4}-?[A-Z0-9]{4}$/.test(code.trim().replace(/\s/g, ""))) {
+      setError("That doesn't look like an access code. Codes look like PAYA-XXXX-XXXX.");
+      return;
+    }
+    setBusy(true);
     try {
       const r = await api.redeemAccess(code.trim());
       const maxAge = Math.max(0, Math.floor((Date.parse(r.expiresAt) - Date.now()) / 1000));
@@ -34,7 +38,9 @@ export default function TesterAccessPage() {
       <form onSubmit={submit} className="w-full max-w-sm rounded-3xl border border-border bg-panel p-7 shadow-sm">
         <Logo />
         <h1 className="mt-6 text-2xl font-semibold tracking-tight">Tester access</h1>
-        <p className="mt-1.5 text-sm text-muted-foreground text-pretty">Enter the access code you were given to try Paya.</p>
+        <p className="mt-1.5 text-sm text-muted-foreground text-pretty">
+          Enter the access code you were given to try Paya. It looks like <span className="font-mono">PAYA-XXXX-XXXX</span>.
+        </p>
         <label htmlFor={`${ids}-c`} className="mt-6 block text-sm font-medium">
           Access code
         </label>
@@ -48,6 +54,7 @@ export default function TesterAccessPage() {
             autoCapitalize="characters"
             spellCheck={false}
             value={code}
+            maxLength={20}
             onChange={(e) => setCode(e.target.value.toUpperCase())}
             placeholder="PAYA-XXXX-XXXX"
             className="focus-ring min-h-11 w-full rounded-xl border border-border bg-panel pr-3 pl-9 font-mono text-base tracking-wider placeholder:font-sans placeholder:tracking-normal placeholder:text-muted-foreground"
