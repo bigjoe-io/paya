@@ -5,3 +5,5 @@ node_modules/
 paya-data.json
 paya-data.json.tmp
 paya-audit.jsonl
+paya-buys.json
+paya-buys.json.tmp

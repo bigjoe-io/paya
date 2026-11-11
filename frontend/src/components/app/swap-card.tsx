@@ -270,7 +270,7 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
                 const c = currencies.find((x) => x.code === e.target.value);
                 if (c) onCurrency?.(c);
               }}
-              className="focus-ring min-h-10 appearance-none rounded-full border border-border bg-card py-1.5 pr-8 pl-3 text-sm font-medium"
+              className="focus-ring min-h-10 appearance-none rounded-full border border-border bg-card py-1.5 pr-10 pl-3 text-sm font-medium"
             >
               {currencies.map((c) => (
                 <option key={c.code} value={c.code} disabled={c.comingSoon}>
@@ -280,7 +280,7 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
               ))}
             </select>
             <ChevronDown
-              className="pointer-events-none absolute top-1/2 right-2.5 size-4 -translate-y-1/2 text-muted-foreground"
+              className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
               aria-hidden="true"
             />
           </span>

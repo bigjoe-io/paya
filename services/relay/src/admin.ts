@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { Hono } from "hono";
 import { readAudit } from "./audit.js";
 import { config } from "./config.js";
-import { swaps, type Swap } from "./db.js";
+import { buys, swaps, type Buy, type Swap } from "./db.js";
 import { oneclick } from "./oneclick.js";
 
 /**
@@ -74,6 +74,18 @@ admin.get("/stats", (c) => {
     feesUsdc: sum(paid, (s) => Number(s.fee_usdc)),
     fiatByCurrency,
     uniqueWallets: new Set(live.map((s) => s.account_id)).size,
+    buys: (() => {
+      const lb = buys.all().filter((b) => !b.demo);
+      const done = lb.filter((b) => b.status === "delivered");
+      return {
+        total: buys.all().length,
+        delivered: done.length,
+        awaitingPayment: lb.filter((b) => b.status === "awaiting_payment").length,
+        converting: lb.filter((b) => b.status === "converting").length,
+        fiatIn: done.reduce((a, b) => a + b.fiat_amount, 0),
+        feesUsdc: done.reduce((a, b) => a + b.fee_usdc, 0),
+      };
+    })(),
     liveOrders: !config.demo,
   });
 });
@@ -110,6 +122,46 @@ admin.post("/swaps/:id/recheck", async (c) => {
       ? "NEAR Intents has no record of this deposit address: the user's wallet transaction never reached it."
       : msg;
     return c.json({ checkedAt: new Date().toISOString(), swap: null, note });
+  }
+});
+
+/* ---------- buys ---------- */
+
+function fullBuy(b: Buy) {
+  const { paj_token: _omit, ...rest } = b;
+  return { ...rest, has_paj_session: Boolean(_omit) };
+}
+
+admin.get("/buys", (c) => {
+  const q = c.req.query("q")?.trim().toLowerCase();
+  const status = c.req.query("status");
+  let list = buys.all();
+  if (status) list = list.filter((b) => b.status === status);
+  if (q)
+    list = list.filter((b) =>
+      [b.id, b.account_id, b.paj_order_id, b.deposit_address, b.pay_account_number, b.currency]
+        .filter(Boolean)
+        .join(" ")
+        .toLowerCase()
+        .includes(q),
+    );
+  return c.json(list.slice(0, 500).map(fullBuy));
+});
+
+admin.get("/buys/:id", (c) => {
+  const b = buys.byId(c.req.param("id"));
+  return b ? c.json(fullBuy(b)) : c.json({ error: "Not found" }, 404);
+});
+
+admin.post("/buys/:id/recheck", async (c) => {
+  const b = buys.byId(c.req.param("id"));
+  if (!b) return c.json({ error: "Not found" }, 404);
+  if (!b.deposit_address) return c.json({ checkedAt: new Date().toISOString(), swap: null, note: "No Intents deposit address (simulated order)" });
+  try {
+    return c.json({ checkedAt: new Date().toISOString(), swap: await oneclick.status(b.deposit_address) });
+  } catch (e) {
+    const msg = (e as Error).message;
+    return c.json({ checkedAt: new Date().toISOString(), swap: null, note: /404/.test(msg) ? "NEAR Intents hasn't seen any USDC at this deposit address yet." : msg });
   }
 });
 

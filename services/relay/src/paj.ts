@@ -54,6 +54,20 @@ export type PajOfframp = {
 
 let loggedBankShape = false;
 
+export type PajOnramp = {
+  id: string;
+  accountNumber: string;
+  accountName: string;
+  amount: number; // USDC PAJ sends to the recipient
+  fiatAmount: number;
+  bank: string;
+  rate: number;
+  recipient: string;
+  currency: string;
+  mint: string;
+  fee: number;
+};
+
 /** Countries PAJ pays out to. */
 export const COUNTRY: Record<string, { country: string; iso: string; flag: string; symbol: string }> = {
   NGN: { country: "Nigeria", iso: "NG", flag: "🇳🇬", symbol: "₦" },
@@ -74,6 +88,9 @@ export const paj = {
     }),
 
   /* ---- public ---- */
+  /** USD→NGN on-ramp (buy) rate. No session needed. */
+  publicNgnBuyRate: async () => (await call<{ onRampRate: { rate: number } }>("/pub/rate")).onRampRate.rate,
+
   /** USD→NGN off-ramp rate. No session needed. */
   publicNgnRate: async () =>
     (await call<{ offRampRate: { rate: number } }>("/pub/rate")).offRampRate.rate,
@@ -165,6 +182,31 @@ export const paj = {
       },
     });
   },
+  /** How much USDC `fiat` in `currency` buys, for this user. */
+  onrampValue: (token: string, fiat: number, currency: string) =>
+    call<{ amount: number; fiatAmount: number; rate?: number }>(
+      `/pub/rates/onramp-value?fiatAmount=${fiat}&mint=${USDC_SOLANA_MINT}&currency=${currency}`,
+      { token },
+    ),
+
+  /** Buy order: the user pays `fiat` into PAJ's account; PAJ sends USDC on Solana to `recipient`. */
+  createOnramp(token: string, p: { fiat: number; currency: string; recipient: string; feeUsdc: number; reference: string }) {
+    log("paj", `onramp ${p.fiat} ${p.currency} → USDC to ${p.recipient} (${p.reference})`);
+    return call<PajOnramp>("/pub/onramp", {
+      method: "POST",
+      token,
+      body: {
+        fiatAmount: p.fiat,
+        currency: p.currency,
+        recipient: p.recipient,
+        mint: USDC_SOLANA_MINT,
+        chain: "SOLANA",
+        businessUSDCFee: p.feeUsdc,
+        ...(config.PUBLIC_URL ? { webhookURL: `${config.PUBLIC_URL}/webhooks/paj` } : {}),
+      },
+    });
+  },
+
   transaction: (token: string, id: string) =>
     call<{ id: string; status: PajStatus; signature?: string; fiatAmount?: number }>(`/pub/transactions/${id}`, { token }),
 };

@@ -8,6 +8,8 @@ import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { preview } from "./quote.js";
 import { applyPayout, createSwap, recordDeposit } from "./swaps.js";
+import { BUY_CURRENCIES, createBuy, markSent, previewBuy } from "./buys.js";
+import { buys, type Buy } from "./db.js";
 import { admin } from "./admin.js";
 import { audit, last4 } from "./audit.js";
 
@@ -205,6 +207,49 @@ app.get("/swaps/:id", (c) => {
 
 app.get("/swaps", (c) => c.json(swaps.forAccount(accountId.parse(c.req.query("account"))).map(publicSwap)));
 
+/* ---------- buy: fiat → NEAR ---------- */
+
+app.get("/buy/currencies", (c) => c.json(BUY_CURRENCIES));
+
+app.get("/buy/quote", async (c) => {
+  const q = z
+    .object({
+      fiat: z.coerce.number().positive().max(50_000_000),
+      currency: z.string().length(3).transform((s) => s.toUpperCase()),
+      account: accountId.optional(),
+    })
+    .parse(c.req.query());
+  return c.json(await previewBuy(q.fiat, q.currency, q.account ?? "near", session(c)));
+});
+
+app.post("/buys", async (c) => {
+  const b = z
+    .object({
+      accountId,
+      fiat: z.number().positive().max(50_000_000),
+      currency: z.string().length(3).transform((s) => s.toUpperCase()),
+    })
+    .parse(await c.req.json());
+  let buy;
+  try {
+    buy = await createBuy(b, session(c, true));
+  } catch (e) {
+    audit("buy_rejected", actorOf(c) ?? b.accountId, { wallet: b.accountId, fiat: b.fiat, currency: b.currency, error: (e as Error).message });
+    throw e;
+  }
+  audit("buy_created", actorOf(c) ?? b.accountId, { buyId: buy.id, wallet: b.accountId, fiat: b.fiat, currency: b.currency, simulated: Boolean(buy.demo) });
+  return c.json(publicBuy(buy));
+});
+
+app.post("/buys/:id/sent", (c) => c.json(publicBuy(markSent(c.req.param("id")))));
+
+app.get("/buys/:id", (c) => {
+  const b = buys.byId(c.req.param("id"));
+  return b ? c.json(publicBuy(b)) : c.json({ error: "Not found" }, 404);
+});
+
+app.get("/buys", (c) => c.json(buys.forAccount(accountId.parse(c.req.query("account"))).map(publicBuy)));
+
 /* ---------- admin (server-to-server, token-protected) ---------- */
 
 app.route("/admin", admin);
@@ -244,6 +289,31 @@ function wrapAndSend(depositAddress: string, amountYocto: string) {
       fc("near_deposit", {}, amountYocto),
       fc("ft_transfer", { receiver_id: depositAddress, amount: amountYocto, memo: "paya" }, "1"),
     ],
+  };
+}
+
+function publicBuy(b: Buy) {
+  const toNear = (y: string) => Number(BigInt(y) / 10n ** 18n) / 1e6;
+  return {
+    id: b.id,
+    status: b.status,
+    demo: Boolean(b.demo),
+    currency: b.currency,
+    fiatAmount: b.fiat_amount,
+    nearExpected: toNear(b.near_expected),
+    nearMin: toNear(b.near_min),
+    usdc: b.usdc_expected,
+    feeUsdc: b.fee_usdc,
+    rate: b.rate,
+    // Where the user sends the money. Shown only while the order can be paid.
+    payTo:
+      b.status === "awaiting_payment"
+        ? { bank: b.pay_bank, accountNumber: b.pay_account_number, accountName: b.pay_account_name }
+        : null,
+    deadline: b.deadline,
+    error: b.error,
+    createdAt: b.created_at,
+    updatedAt: b.updated_at,
   };
 }
 

@@ -3,13 +3,14 @@
 import { useEffect, useState } from "react";
 import { Topbar } from "@/components/app/topbar";
 import { SwapCard } from "@/components/app/swap-card";
+import { BuyCard } from "@/components/app/buy-card";
 import { Amount } from "@/components/app/ui";
 import { useWallet } from "@/components/app/wallet-provider";
 import { api, type Currency } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 const TABS = [
-  { id: "buy", label: "Buy", soon: true },
+  { id: "buy", label: "Buy", soon: false },
   { id: "sell", label: "Sell", soon: false },
   { id: "bridge", label: "Bridge", soon: true },
 ];
@@ -19,6 +20,7 @@ export default function SwapPage() {
   const [currencies, setCurrencies] = useState<Currency[] | null>(null);
   const [prices, setPrices] = useState<{ nearUsd: number; ngnPerUsd: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"buy" | "sell">("sell");
 
   useEffect(() => {
     let cancelled = false;
@@ -72,13 +74,17 @@ export default function SwapPage() {
               key={t.id}
               type="button"
               role="tab"
-              aria-selected={!t.soon}
+              aria-selected={tab === t.id}
               aria-disabled={t.soon || undefined}
               tabIndex={t.soon ? -1 : 0}
-              onClick={(e) => t.soon && e.preventDefault()}
+              onClick={(e) => (t.soon ? e.preventDefault() : setTab(t.id as "buy" | "sell"))}
               className={cn(
-                "focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium",
-                t.soon ? "cursor-not-allowed text-muted-foreground" : "bg-panel text-foreground shadow-sm",
+                "focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors duration-100",
+                t.soon
+                  ? "cursor-not-allowed text-muted-foreground"
+                  : tab === t.id
+                    ? "bg-panel text-foreground shadow-sm"
+                    : "text-muted-foreground hover:text-foreground",
               )}
             >
               {t.label}
@@ -97,14 +103,20 @@ export default function SwapPage() {
               {error}
             </p>
           ) : currencies ? (
-            <SwapCard currencies={currencies} />
+            tab === "buy" ? (
+              <BuyCard currencies={currencies.filter((c) => !c.comingSoon)} />
+            ) : (
+              <SwapCard currencies={currencies} />
+            )
           ) : (
             <div className="glass-card h-[28rem] animate-pulse rounded-3xl" aria-busy="true" aria-label="Loading" />
           )}
         </div>
 
         <p className="mt-4 text-center text-xs text-muted-foreground text-pretty">
-          Your NEAR goes from your wallet straight into the swap. Paya never holds your funds.
+          {tab === "buy"
+            ? "Your NEAR is sent straight to your own wallet. Paya never holds your money or your NEAR."
+            : "Your NEAR goes from your wallet straight into the swap. Paya never holds your funds."}
         </p>
       </main>
     </>

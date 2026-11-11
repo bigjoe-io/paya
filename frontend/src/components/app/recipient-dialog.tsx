@@ -2,6 +2,7 @@
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { BadgeCheck, Check, Plus, X } from "lucide-react";
+import { BankPicker } from "@/components/app/bank-picker";
 import { api, type Bank, type Currency } from "@/lib/api";
 import { maskAccount, useRecipients, type Recipient } from "@/lib/recipients";
 import { cn } from "@/lib/utils";
@@ -157,11 +158,11 @@ function AccountForm({
 
   const bank = banks.find((b) => b.id === bankId);
 
-  async function resolve() {
-    if (!bankId || account.length < 10) return;
+  async function resolve(bank = bankId) {
+    if (!bank || account.length < 10) return;
     setCheck({ state: "checking" });
     try {
-      const r = await api.resolveAccount(bankId, account);
+      const r = await api.resolveAccount(bank, account);
       setCheck({ state: "ok", name: r.accountName });
     } catch (e) {
       setCheck({ state: "error", message: (e as Error).message });
@@ -191,26 +192,19 @@ function AccountForm({
   return (
     <form onSubmit={onSubmit} className="mt-5 space-y-4">
       <div>
-        <label htmlFor={`${id}-bank`} className="block text-sm font-medium">
+        <span id={`${id}-bank-label`} className="block text-sm font-medium">
           Bank
-        </label>
-        <select
-          id={`${id}-bank`}
-          required
+        </span>
+        <BankPicker
+          banks={banks}
           value={bankId}
-          onChange={(e) => {
-            setBankId(e.target.value);
+          labelId={`${id}-bank-label`}
+          onChange={(v) => {
+            setBankId(v);
             setCheck({ state: "idle" });
+            void resolve(v); // account typed first → look the name up now
           }}
-          className="focus-ring mt-1.5 min-h-11 w-full rounded-xl border border-border bg-panel px-3 text-base"
-        >
-          <option value="">{banks.length ? "Choose a bank" : "No banks available"}</option>
-          {banks.map((b) => (
-            <option key={b.id} value={b.id}>
-              {b.name}
-            </option>
-          ))}
-        </select>
+        />
       </div>
 
       <div>

@@ -6,7 +6,7 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm install --no-save tsx@4
 COPY tsconfig.json ./
 COPY src ./src
-ENV NODE_ENV=production PORT=8787 DB_PATH=/data/paya-data.json AUDIT_PATH=/data/paya-audit.jsonl
+ENV NODE_ENV=production PORT=8787 DB_PATH=/data/paya-data.json AUDIT_PATH=/data/paya-audit.jsonl BUYS_PATH=/data/paya-buys.json
 # Mount a persistent volume at /data so swap records survive restarts.
 VOLUME ["/data"]
 EXPOSE 8787

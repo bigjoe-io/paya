@@ -49,59 +49,124 @@ export type Swap = {
 
 export type SwapEvent = { at: string; type: string; detail?: Record<string, unknown> };
 
-const FILE = config.DB_PATH;
 const ACTIVE: SwapStatus[] = ["awaiting_deposit", "swapping", "paying"];
-
-function load(): Map<string, Swap> {
-  if (!existsSync(FILE)) return new Map();
-  try {
-    const list = JSON.parse(readFileSync(FILE, "utf8")) as Swap[];
-    return new Map(list.map((s) => [s.id, s]));
-  } catch (e) {
-    throw new Error(`Can't read ${FILE}: ${(e as Error).message}. Move it aside to start fresh.`);
-  }
-}
-
-const rows = load();
-
-function persist() {
-  const tmp = `${FILE}.tmp`;
-  writeFileSync(tmp, JSON.stringify([...rows.values()], null, 1), { mode: 0o600 });
-  renameSync(tmp, FILE);
-}
-
 const now = () => new Date().toISOString();
-const copy = (s: Swap | undefined) => (s ? { ...s } : undefined);
-const newestFirst = (a: Swap, b: Swap) => b.created_at.localeCompare(a.created_at);
+
+type Row = { id: string; created_at: string; updated_at: string; events?: SwapEvent[] };
+
+/**
+ * A tiny JSON-file table. Atomic writes (temp file + rename), owner-only
+ * permissions, append-only event timeline per row.
+ */
+function createStore<T extends Row>(file: string, name: string) {
+  const rows: Map<string, T> = (() => {
+    if (!existsSync(file)) return new Map();
+    try {
+      const list = JSON.parse(readFileSync(file, "utf8")) as T[];
+      return new Map(list.map((r) => [r.id, r]));
+    } catch (e) {
+      throw new Error(`Can't read ${file}: ${(e as Error).message}. Move it aside to start fresh.`);
+    }
+  })();
+  const persist = () => {
+    const tmp = `${file}.tmp`;
+    writeFileSync(tmp, JSON.stringify([...rows.values()], null, 1), { mode: 0o600 });
+    renameSync(tmp, file);
+  };
+  const newestFirst = (a: T, b: T) => b.created_at.localeCompare(a.created_at);
+  const list = () => [...rows.values()];
+  return {
+    byId: (id: string) => {
+      const r = rows.get(id);
+      return r ? { ...r } : undefined;
+    },
+    find: (pred: (r: T) => boolean) => {
+      const r = list().find(pred);
+      return r ? { ...r } : undefined;
+    },
+    where: (pred: (r: T) => boolean) => list().filter(pred).map((r) => ({ ...r })),
+    all: () => list().sort(newestFirst).map((r) => ({ ...r })),
+    forAccount: (accountId: string, limit = 50) =>
+      list()
+        .filter((r) => (r as unknown as { account_id: string }).account_id === accountId)
+        .sort(newestFirst)
+        .slice(0, limit)
+        .map((r) => ({ ...r })),
+    insert: (r: Omit<T, "created_at" | "updated_at">) => {
+      if (rows.has(r.id)) throw new Error(`Duplicate ${name} ${r.id}`);
+      const t = now();
+      rows.set(r.id, { ...r, created_at: t, updated_at: t } as T);
+      persist();
+    },
+    update: (id: string, patch: Partial<T>) => {
+      const r = rows.get(id);
+      if (!r || Object.keys(patch).length === 0) return;
+      rows.set(id, { ...r, ...patch, id, updated_at: now() });
+      persist();
+    },
+    /** Record what happened, in order. Never edited, only appended. */
+    event: (id: string, type: string, detail?: Record<string, unknown>) => {
+      const r = rows.get(id);
+      if (!r) return;
+      r.events = [...(r.events ?? []), { at: now(), type, ...(detail ? { detail } : {}) }];
+      persist();
+    },
+  };
+}
+
+const swapStore = createStore<Swap>(config.DB_PATH, "swap");
 
 export const swaps = {
-  byId: (id: string) => copy(rows.get(id)),
-  byPajOrderId: (id: string) => copy([...rows.values()].find((s) => s.paj_order_id === id)),
-  forAccount: (accountId: string, limit = 50) =>
-    [...rows.values()].filter((s) => s.account_id === accountId).sort(newestFirst).slice(0, limit).map((s) => ({ ...s })),
+  ...swapStore,
+  byPajOrderId: (id: string) => swapStore.find((s) => s.paj_order_id === id),
   active: () =>
-    [...rows.values()]
-      .filter((s) => ACTIVE.includes(s.status))
-      .sort((a, b) => a.created_at.localeCompare(b.created_at))
-      .map((s) => ({ ...s })),
-  insert: (s: Omit<Swap, "created_at" | "updated_at">) => {
-    if (rows.has(s.id)) throw new Error(`Duplicate swap ${s.id}`);
-    const t = now();
-    rows.set(s.id, { ...s, created_at: t, updated_at: t });
-    persist();
-  },
-  /** Record what happened to a swap, in order. Never edited, only appended. */
-  event: (id: string, type: string, detail?: Record<string, unknown>) => {
-    const s = rows.get(id);
-    if (!s) return;
-    s.events = [...(s.events ?? []), { at: now(), type, ...(detail ? { detail } : {}) }];
-    persist();
-  },
-  all: () => [...rows.values()].sort(newestFirst).map((s) => ({ ...s })),
-  update: (id: string, patch: Partial<Swap>) => {
-    const s = rows.get(id);
-    if (!s || Object.keys(patch).length === 0) return;
-    rows.set(id, { ...s, ...patch, id, updated_at: now() });
-    persist();
-  },
+    swapStore
+      .where((s) => ACTIVE.includes(s.status))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at)),
+};
+
+/* ---------- buys: fiat → NEAR ---------- */
+
+export type BuyStatus =
+  | "awaiting_payment" // waiting for the user's bank transfer to PAJ
+  | "converting" // PAJ received the fiat; USDC on its way / being swapped to NEAR
+  | "delivered" // NEAR (or wNEAR) is in the user's wallet
+  | "refunded"
+  | "expired"
+  | "failed";
+
+export type Buy = {
+  id: string;
+  account_id: string; // the NEAR wallet that receives
+  currency: string;
+  fiat_amount: number; // what the user transfers
+  pay_bank: string; // where they transfer it (PAJ's collection account)
+  pay_account_number: string;
+  pay_account_name: string;
+  usdc_expected: number;
+  fee_usdc: number;
+  near_expected: string; // yocto
+  near_min: string; // yocto
+  rate: number; // fiat per USDC
+  paj_order_id: string | null;
+  paj_token: string | null; // user's PAJ session, cleared when final
+  deposit_address: string | null; // NEAR Intents Solana deposit address (PAJ's recipient)
+  deadline: string;
+  status: BuyStatus;
+  payment_status: string | null; // raw PAJ status
+  swap_status: string | null; // raw 1Click status
+  error: string | null;
+  demo: number;
+  created_at: string;
+  updated_at: string;
+  events?: SwapEvent[];
+};
+
+const BUY_ACTIVE: BuyStatus[] = ["awaiting_payment", "converting"];
+const buyStore = createStore<Buy>(config.BUYS_PATH, "buy");
+
+export const buys = {
+  ...buyStore,
+  active: () =>
+    buyStore.where((b) => BUY_ACTIVE.includes(b.status)).sort((a, b) => a.created_at.localeCompare(b.created_at)),
 };

@@ -80,6 +80,29 @@ export const oneclick = {
     return q;
   },
 
+  /**
+   * Buy side: USDC on Solana → NEAR in the user's wallet. FLEX_INPUT, because
+   * the exact USDC PAJ sends isn't known up front: anything at or above
+   * minAmountIn is swapped (and more than `usdcUnits` is fine). Failures
+   * refund into the user's own NEAR Intents balance — they have no Solana
+   * wallet, but they control their Intents account with their NEAR wallet.
+   */
+  buyQuote(usdcUnits: bigint, nearAccount: string, opts: { dry: boolean; deadline?: Date }) {
+    return quote({
+      dry: opts.dry,
+      swapType: "FLEX_INPUT",
+      slippageTolerance: 150, // 1.5% band on both sides
+      originAsset: ASSET_USDC_SOLANA,
+      destinationAsset: ASSET_WNEAR,
+      amount: usdcUnits.toString(),
+      recipient: nearAccount,
+      recipientType: "DESTINATION_CHAIN",
+      refundTo: nearAccount,
+      refundType: "INTENTS",
+      deadline: (opts.deadline ?? new Date(Date.now() + 20 * 60 * 1000)).toISOString(),
+    });
+  },
+
   async submitDeposit(depositAddress: string, txHash: string) {
     await fetch(`${BASE}/deposit/submit`, {
       method: "POST",

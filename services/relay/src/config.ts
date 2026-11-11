@@ -51,6 +51,7 @@ const schema = z.object({
 
   PORT: z.coerce.number().int().default(8787),
   DB_PATH: z.string().default("./paya-data.json"),
+  BUYS_PATH: z.string().default("./paya-buys.json"),
   POLL_MS: z.coerce.number().int().min(2000).default(5000),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 });

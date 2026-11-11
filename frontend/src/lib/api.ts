@@ -44,6 +44,42 @@ export type Swap = {
   updatedAt: string;
 };
 
+export type BuyQuote = {
+  fiat: number;
+  currency: string;
+  usdc: number;
+  feeUsdc: number;
+  usdcNet: number;
+  nearOut: number;
+  nearMin: number;
+  rate: number;
+  fiatPerNear: number;
+  feePercent: number;
+  priceSource: "account" | "public";
+  etaSeconds: number;
+};
+
+export type BuyStatus = "awaiting_payment" | "converting" | "delivered" | "refunded" | "expired" | "failed";
+
+export type Buy = {
+  id: string;
+  status: BuyStatus;
+  demo: boolean;
+  currency: string;
+  fiatAmount: number;
+  nearExpected: number;
+  nearMin: number;
+  usdc: number;
+  feeUsdc: number;
+  rate: number;
+  /** Where to send the money; only while the order can still be paid. */
+  payTo: { bank: string; accountNumber: string; accountName: string } | null;
+  deadline: string;
+  error: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 /** The one transaction the wallet signs (all actions on wrap.near). */
 export type WalletTx = {
   receiverId: string;
@@ -124,6 +160,15 @@ export const api = {
     request<Swap>(`/swaps/${id}/deposit`, { method: "POST", body: JSON.stringify({ txHash }) }),
   swap: (id: string) => request<Swap>(`/swaps/${id}`),
   swaps: (account: string) => request<Swap[]>(`/swaps?account=${account}`),
+
+  buyCurrencies: () => request<string[]>("/buy/currencies"),
+  buyQuote: (fiat: number, currency: string, account?: string | null) =>
+    request<BuyQuote>(`/buy/quote?fiat=${fiat}&currency=${currency}${account ? `&account=${account}` : ""}`),
+  createBuy: (b: { accountId: string; fiat: number; currency: string }) =>
+    request<Buy>("/buys", { method: "POST", body: JSON.stringify(b) }),
+  markBuySent: (id: string) => request<Buy>(`/buys/${id}/sent`, { method: "POST" }),
+  buy: (id: string) => request<Buy>(`/buys/${id}`),
+  buys: (account: string) => request<Buy[]>(`/buys?account=${account}`),
 };
 
 export function formatFiat(amount: number, currency: Pick<Currency, "symbol" | "code"> | string) {
