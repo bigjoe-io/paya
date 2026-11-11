@@ -29,6 +29,15 @@ cd frontend && npm install && npm run dev    # http://localhost:3000 → /app
 
 With `LIVE_ORDERS=false` (the default) everything is real except the money movement: sign-in, banks, name lookup and quotes hit the live services, and swaps are simulated. Set `LIVE_ORDERS=true` in the relay to place real orders (mainnet NEAR, real payouts).
 
+## Deploy
+
+| Part | Where | Settings |
+|---|---|---|
+| Frontend | Vercel | Root directory `frontend`, framework Next.js. Env: `NEXT_PUBLIC_RELAY_URL=https://<your relay>` |
+| Relay | Railway / Render / Fly (always-on) | Root `services/relay`, uses its `Dockerfile`. Env: `PAJ_API_KEY`, `LIVE_ORDERS`, `FEE_PERCENT`, `CORS_ORIGINS=https://<your vercel domain>`, `PUBLIC_URL=https://<your relay>`. Mount a volume at `/data`. |
+
+The relay polls in-flight swaps every few seconds, so it can't run as Vercel serverless functions.
+
 ## Pricing
 
 ```
