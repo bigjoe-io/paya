@@ -34,7 +34,7 @@ npm install && npm run dev                   # http://localhost:8787
 cd frontend && npm install && npm run dev    # http://localhost:3000 → /app
 ```
 
-Sign in with any email, add a bank account (any 10-digit number verifies in simulation), then send testnet NEAR to the address shown. The order appears within seconds and walks Received → Swapping → Paying → Paid.
+Sign in with any email, add a bank account (the full Nigerian bank list loads; account numbers are checked with the CBN NUBAN check digit — e.g. GTBank `0123456785` passes — and the holder's name is confirmed once the payout rail is live), then send testnet NEAR to the address shown. The order appears within seconds and walks Received → Swapping → Paying → Paid.
 
 A factory is deployed on testnet at `paya-demo-6282.testnet` (see [contracts/README.md](contracts/README.md) to deploy your own).
 

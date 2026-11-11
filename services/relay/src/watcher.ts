@@ -1,7 +1,7 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
 import { orders, users, type Order } from "./db.js";
-import { fossapay } from "./fossapay.js";
+import { fossapay, UNVERIFIED_NAME } from "./fossapay.js";
 import { log, warn } from "./log.js";
 import { near } from "./near.js";
 import { oneclick, oneclickSim } from "./oneclick.js";
@@ -127,6 +127,13 @@ async function pay(o: Order) {
   if (!u?.bank_code || !u.bank_name || !u.account_number || !u.account_name) {
     orders.update(o.id, { status: "failed", error: "no bank account on file" });
     return;
+  }
+  // Saved in test mode (no name lookup then) but paying live now: resolve the
+  // real name before any money moves.
+  if (u.account_name === UNVERIFIED_NAME && !config.simulatePayout) {
+    const { accountName } = await fossapay.nameEnquiry(u.bank_code, u.account_number);
+    users.setBank(u.id, { code: u.bank_code, name: u.bank_name, number: u.account_number, accountName });
+    u.account_name = accountName;
   }
   if (!o.ngn_amount || o.ngn_amount < 100) {
     orders.update(o.id, { status: "failed", error: `naira amount too small (${o.ngn_amount})` });

@@ -27,35 +27,90 @@ async function call<T>(path: string, init: RequestInit = {}): Promise<T> {
 export type Bank = { bankname: string; bankcode: string };
 export type PayoutStatus = "processing" | "completed" | "failed" | "reversed";
 
-const SIM_BANKS: Bank[] = [
-  { bankname: "ACCESS BANK", bankcode: "044" },
-  { bankname: "GUARANTY TRUST BANK", bankcode: "058" },
-  { bankname: "KUDA MICROFINANCE BANK", bankcode: "090267" },
-  { bankname: "OPAY", bankcode: "100004" },
-  { bankname: "ZENITH BANK", bankcode: "057" },
-  { bankname: "FIRST BANK OF NIGERIA", bankcode: "011" },
-  { bankname: "UNITED BANK FOR AFRICA", bankcode: "033" },
-  { bankname: "MONIEPOINT MFB", bankcode: "50515" },
+/** Used only if the public list below is unreachable too. */
+const FALLBACK_BANKS: Bank[] = [
+  { bankname: "Access Bank", bankcode: "044" },
+  { bankname: "First Bank of Nigeria", bankcode: "011" },
+  { bankname: "Guaranty Trust Bank", bankcode: "058" },
+  { bankname: "United Bank For Africa", bankcode: "033" },
+  { bankname: "Zenith Bank", bankcode: "057" },
 ];
+
+/** Placeholder stored as the account name until a real name enquiry is possible. */
+export const UNVERIFIED_NAME = "UNVERIFIED";
+
+let publicBanks: { at: number; banks: Bank[] } | null = null;
+
+/**
+ * Real Nigerian bank list without an API key: Paystack publishes it openly.
+ * Same mix of 3-digit CBN codes and NIP codes the rail uses. Cached 24h.
+ */
+async function publicBankList(): Promise<Bank[]> {
+  if (publicBanks && Date.now() - publicBanks.at < 24 * 3600_000) return publicBanks.banks;
+  try {
+    const r = await fetch("https://api.paystack.co/bank?country=nigeria&perPage=500", {
+      signal: AbortSignal.timeout(10000),
+    });
+    const j = (await r.json()) as {
+      data?: { name: string; code: string; active: boolean; supports_transfer: boolean; is_deleted?: boolean }[];
+    };
+    const banks = (j.data ?? [])
+      .filter((b) => b.active && b.supports_transfer && !b.is_deleted)
+      .map((b) => ({ bankname: b.name.trim(), bankcode: b.code }))
+      // Same bank listed under two codes: keep the 3-digit CBN code (NUBAN-checkable).
+      .sort((a, b) => a.bankname.localeCompare(b.bankname) || a.bankcode.length - b.bankcode.length)
+      .filter((b, i, all) => i === 0 || all[i - 1].bankname.toLowerCase() !== b.bankname.toLowerCase());
+    if (banks.length < 20) throw new Error(`only ${banks.length} banks`);
+    publicBanks = { at: Date.now(), banks };
+    log("rail", `loaded ${banks.length} banks from the public list`);
+    return banks;
+  } catch (e) {
+    log("rail", `public bank list unavailable (${(e as Error).message}); using fallback`);
+    return publicBanks?.banks ?? FALLBACK_BANKS;
+  }
+}
+
+/**
+ * CBN NUBAN check digit. For 3-digit (deposit-money bank) codes the 10th digit
+ * of every account number is derived from the bank code + first 9 digits, so a
+ * typo is caught with no network call. Other institution codes use a different
+ * code space, so they are not checked here.
+ */
+export function nubanValid(bankCode: string, accountNumber: string): boolean | null {
+  if (!/^\d{10}$/.test(accountNumber)) return false;
+  if (!/^\d{3}$/.test(bankCode)) return null; // can't check offline
+  const digits = (bankCode + accountNumber.slice(0, 9)).split("").map(Number);
+  const weights = [3, 7, 3, 3, 7, 3, 3, 7, 3, 3, 7, 3];
+  const sum = digits.reduce((s, d, i) => s + d * weights[i], 0);
+  const check = (10 - (sum % 10)) % 10;
+  return check === Number(accountNumber[9]);
+}
 
 const simPayouts = new Map<string, { createdAt: number }>();
 
 export const fossapay = {
   async banks(): Promise<Bank[]> {
-    if (config.simulatePayout) return SIM_BANKS;
+    if (config.simulatePayout) return publicBankList();
     return call<Bank[]>("/transfers/fiat/banks");
   },
 
-  async nameEnquiry(bankCode: string, accountNumber: string): Promise<{ accountName: string }> {
+  /**
+   * Live: the rail resolves the real account holder's name.
+   * Test mode: no name lookup is possible without a provider key, so we only
+   * run the offline NUBAN check and say plainly that the name is unverified.
+   */
+  async nameEnquiry(bankCode: string, accountNumber: string): Promise<{ accountName: string; verified: boolean }> {
     if (config.simulatePayout) {
-      if (!/^\d{10}$/.test(accountNumber)) throw new Error("Bank account details could not be verified");
-      return { accountName: "SIMULATED ACCOUNT HOLDER" };
+      if (!/^\d{10}$/.test(accountNumber)) throw new Error("Account numbers are 10 digits");
+      if (nubanValid(bankCode, accountNumber) === false)
+        throw new Error("That account number doesn't match this bank. Check for a typo.");
+      return { accountName: UNVERIFIED_NAME, verified: false };
     }
     const d = await call<{ accountName: string }>("/transfers/fiat/bank-name-enquiry", {
       method: "POST",
       body: JSON.stringify({ bankCode, accountNumber }),
     });
-    return { accountName: d.accountName };
+    return { accountName: d.accountName, verified: true };
   },
 
   /** Fee the rail charges to move `amountNgn` to a bank. Quoted live; never hard-coded. */

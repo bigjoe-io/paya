@@ -8,7 +8,14 @@ export type Me = {
   id: string;
   email: string;
   depositAccount: string | null;
-  bank: { code: string; name: string; accountNumber: string; accountName: string } | null;
+  bank: {
+    code: string;
+    name: string;
+    accountNumber: string;
+    /** null until a real name enquiry has run (test mode). */
+    accountName: string | null;
+    verified: boolean;
+  } | null;
   network: "testnet" | "mainnet";
   balanceYocto?: string;
 };
@@ -99,7 +106,7 @@ export const api = {
   signIn: (auth: Auth) => request<Me>("/me", auth, { method: "POST" }),
   me: (auth: Auth) => request<Me>("/me", auth),
   verifyBank: (auth: Auth, bankCode: string, accountNumber: string) =>
-    request<{ accountName: string }>("/me/bank/verify", auth, {
+    request<{ accountName: string; verified: boolean }>("/me/bank/verify", auth, {
       method: "POST",
       body: JSON.stringify({ bankCode, accountNumber }),
     }),

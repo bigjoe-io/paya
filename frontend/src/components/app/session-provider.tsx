@@ -10,7 +10,7 @@ import {
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { api, type Me } from "@/lib/api";
+import { api, ApiError, type Me } from "@/lib/api";
 
 /**
  * Who is signed in, their Paya account, and the "hide balances" toggle.
@@ -101,8 +101,15 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         cancelled = true;
       };
     }
+    const email = saved.email;
     api
-      .me({ email: saved.email })
+      .me({ email })
+      // Saved session but the relay doesn't know this email (e.g. its database
+      // was reset): sign in again instead of waiting on an address forever.
+      .catch((e: Error) => {
+        if (e instanceof ApiError && e.status === 404) return api.signIn({ email });
+        throw e;
+      })
       .then((m) => {
         if (!cancelled) setMe(m);
       })

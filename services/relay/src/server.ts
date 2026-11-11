@@ -4,7 +4,7 @@ import { z } from "zod";
 import { callerEmail } from "./auth.js";
 import { config } from "./config.js";
 import { orders, pendingKeys, users } from "./db.js";
-import { fossapay } from "./fossapay.js";
+import { fossapay, UNVERIFIED_NAME } from "./fossapay.js";
 import { log } from "./log.js";
 import { near } from "./near.js";
 import { estimate } from "./pricing.js";
@@ -172,7 +172,13 @@ function publicUser(u: ReturnType<typeof users.byId> & object) {
     email: u.email,
     depositAccount: u.deposit_account,
     bank: u.account_number
-      ? { code: u.bank_code, name: u.bank_name, accountNumber: u.account_number, accountName: u.account_name }
+      ? {
+          code: u.bank_code,
+          name: u.bank_name,
+          accountNumber: u.account_number,
+          accountName: u.account_name === UNVERIFIED_NAME ? null : u.account_name,
+          verified: u.account_name !== UNVERIFIED_NAME,
+        }
       : null,
     network: config.NEAR_NETWORK,
   };

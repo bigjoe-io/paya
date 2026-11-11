@@ -6,14 +6,16 @@ import { api, type Bank } from "@/lib/api";
 import { useSession } from "@/components/app/session-provider";
 
 /**
- * Where the naira goes. The account name is verified with the bank before it
- * can be saved, so money never goes to a mistyped number.
+ * Where the naira goes. The number is checked (NUBAN) before saving and the
+ * holder's name is confirmed with the bank (live rail) before any payout, so
+ * money never goes to a mistyped number.
  */
 export function BankForm({ compact = false }: { compact?: boolean }) {
   const { email, me, refresh } = useSession();
   const [banks, setBanks] = useState<Bank[]>([]);
   const [bankCode, setBankCode] = useState("");
   const [accountNumber, setAccountNumber] = useState("");
+  // After a successful check: the holder's name (live) or "" (test mode: number checks out, name unknown).
   const [verified, setVerified] = useState<string | null>(null);
   const [busy, setBusy] = useState<"verify" | "save" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -44,15 +46,25 @@ export function BankForm({ compact = false }: { compact?: boolean }) {
         </div>
         <div className="mt-2 flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="text-lg font-medium">{saved.accountName}</p>
+            <p className="text-lg font-medium">{saved.accountName ?? saved.name}</p>
             <p className="font-mono text-sm text-muted-foreground tabular-nums">
-              {saved.name} · {saved.accountNumber}
+              {saved.accountName ? `${saved.name} · ` : ""}
+              {saved.accountNumber}
             </p>
           </div>
-          <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
-            <BadgeCheck className="size-3.5" aria-hidden="true" />
-            Verified
-          </span>
+          {saved.verified ? (
+            <span className="inline-flex items-center gap-1 rounded-full bg-success-soft px-2.5 py-1 text-xs font-medium text-success">
+              <BadgeCheck className="size-3.5" aria-hidden="true" />
+              Verified
+            </span>
+          ) : (
+            <span
+              className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning"
+              title="The account holder's name is confirmed with the bank before the first live payout."
+            >
+              Name check pending
+            </span>
+          )}
         </div>
         {!compact && (
           <button
@@ -73,7 +85,7 @@ export function BankForm({ compact = false }: { compact?: boolean }) {
     setError(null);
     try {
       const r = await api.verifyBank({ email }, bankCode, accountNumber);
-      setVerified(r.accountName);
+      setVerified(r.verified ? r.accountName : "");
     } catch (e) {
       setVerified(null);
       setError((e as Error).message);
@@ -153,7 +165,7 @@ export function BankForm({ compact = false }: { compact?: boolean }) {
               setVerified(null);
             }}
             onBlur={verify}
-            placeholder="0123456789"
+            placeholder="10-digit account number"
             className="focus-ring mt-1.5 min-h-11 w-full rounded-xl border border-border bg-panel px-3 font-mono text-base tabular-nums placeholder:text-muted-foreground"
           />
         </div>
@@ -167,6 +179,11 @@ export function BankForm({ compact = false }: { compact?: boolean }) {
             {verified}
           </span>
         )}
+        {verified === "" && (
+          <span className="text-muted-foreground">
+            Account number checks out. The holder&apos;s name is confirmed with the bank before the first payout.
+          </span>
+        )}
         {error && (
           <span role="alert" className="text-warning">
             {error}
@@ -177,7 +194,7 @@ export function BankForm({ compact = false }: { compact?: boolean }) {
       <div className="mt-2 flex gap-2">
         <button
           type="submit"
-          disabled={!verified || busy !== null}
+          disabled={verified === null || busy !== null}
           className="focus-ring inline-flex min-h-11 items-center justify-center rounded-xl bg-foreground px-5 text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:bg-foreground/20 disabled:text-muted-foreground"
         >
           {busy === "save" ? "Saving…" : "Save bank account"}
