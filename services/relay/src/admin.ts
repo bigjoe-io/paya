@@ -4,6 +4,8 @@ import { readAudit } from "./audit.js";
 import { config } from "./config.js";
 import { buys, swaps, users, type Buy, type Swap, type User } from "./db.js";
 import { balances, toNear } from "./near.js";
+import { paj } from "./paj.js";
+import { pajTokenOf } from "./accounts.js";
 import * as rubic from "./rubic.js";
 import { solBalance, treasuryAddress, usdcBalance, fromUnits } from "./solana.js";
 
@@ -174,6 +176,20 @@ admin.post("/buys/:id/recheck", async (c) => {
   }
 });
 
+/** What PAJ itself says about a purchase's payment (for "I paid but nothing happened" cases). */
+admin.get("/buys/:id/paj", async (c) => {
+  const b = buys.byId(c.req.param("id"));
+  if (!b?.paj_order_id) return c.json({ error: "Not found" }, 404);
+  const u = users.byAddress(b.account_id);
+  const token = u ? pajTokenOf(u) : null;
+  if (!token) return c.json({ error: "No valid payout session for this account" }, 409);
+  try {
+    return c.json(await paj.transaction(token, b.paj_order_id));
+  } catch (e) {
+    return c.json({ error: (e as Error).message }, 502);
+  }
+});
+
 /** Paya's Solana wallet: SOL for fees and USDC in transit. */
 admin.get("/treasury", async (c) => {
   const [sol, usdc] = await Promise.all([solBalance().catch(() => null), usdcBalance().catch(() => null)]);
@@ -220,9 +236,12 @@ admin.post("/import", async (c) => {
   if (!body) return c.json({ error: "Expected JSON" }, 400);
   const incomingEmails = new Set((body.users ?? []).map((u) => u.email));
   const foreign = users.all().filter((u) => !incomingEmails.has(u.email));
-  if (foreign.length) return c.json({ error: "This server already has its own accounts; import refused" }, 409);
+  if (foreign.length) return c.json({ error: "This server already has other people's accounts; import refused" }, 409);
+  // An email that already has an account here keeps the server's record (newer session/bank); its
+  // history still shows because orders are keyed by the NEAR address, which is the same for the same email.
+  const fresh = (body.users ?? []).filter((u) => !users.byEmail(u.email));
   const result = {
-    users: users.importRows(body.users ?? []),
+    users: users.importRows(fresh),
     swaps: swaps.importRows(body.swaps ?? []),
     buys: buys.importRows(body.buys ?? []),
   };
