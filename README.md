@@ -1,15 +1,22 @@
 # Paya
 
-One click from NEAR to fiat. Send NEAR to your Paya address; naira lands in your bank account. Nothing else to do.
+> ## 🧑‍⚖️ Judges: try Paya live
+>
+> **1. Open [usepaya.xyz/admin](https://www.usepaya.xyz/admin)**
+> **2. Enter the access code: `PAYA-JUDG-ES26`**
+> **3. Sign in with your email and you're in the app.**
+>
+> The code works for everyone and doesn't expire. Paya is live with real money: buying or cashing out moves real funds.
+
+Move money between NEAR and your bank, both ways. Sign in with your email, get your own NEAR address, buy NEAR with a bank transfer, and cash NEAR out to your bank account — by hand or automatically.
 
 Built for the [NEAR Hackathon](https://nearhackathon.com) — Track 08, Real-World Money.
 
 ## How it works
 
 ```
-connect a NEAR wallet (HOT, Meteor, Nightly, …) ──▶ type an amount ──▶ pick a bank account ──▶ Swap
-                                                                                         │ one signature
-NEAR ──NEAR Intents (1Click)──▶ USDC on Solana ──PAJ──▶ bank payout (NGN · GHS · KES · TZS · ZAR)
+Buy:   bank transfer ──PAJ──▶ USDC (Solana) ──swap──▶ NEAR in your Paya address
+Sell:  NEAR in your Paya address ──swap──▶ USDC (Solana) ──PAJ──▶ your bank account
 ```
 
 - **Frontend** ([frontend/](frontend/)): landing page and the swap app — wallet connect via NEAR Connect, email verification with the payout network, bank accounts with real account-holder names, a live quote with every fee shown, and progress until the money lands.
