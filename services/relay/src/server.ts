@@ -102,7 +102,10 @@ app.get("/banks", async (c) => {
   const cur = currency.parse(c.req.query("currency") ?? "NGN");
   const all = await paj.banks(session(c, true));
   const iso = COUNTRY[cur].iso;
-  return c.json(all.filter((b) => !b.country || b.country === iso).sort((a, b) => a.name.localeCompare(b.name)));
+  // PAJ may label a bank's country as "NG", "Nigeria" or "NGN".
+  const match = new Set([iso, COUNTRY[cur].country, cur].map((x) => x.toLowerCase()));
+  const inCountry = all.filter((b) => !b.country || match.has(b.country.toLowerCase()));
+  return c.json(inCountry.sort((a, b) => a.name.localeCompare(b.name)));
 });
 
 app.post("/bank-accounts/resolve", async (c) => {

@@ -52,6 +52,8 @@ export type PajOfframp = {
   fee: number;
 };
 
+let loggedBankShape = false;
+
 /** Countries PAJ pays out to. */
 export const COUNTRY: Record<string, { country: string; iso: string; flag: string; symbol: string }> = {
   NGN: { country: "Nigeria", iso: "NG", flag: "🇳🇬", symbol: "₦" },
@@ -83,7 +85,36 @@ export const paj = {
       `/pub/rates/offramp-value?amount=${usdc}&mint=${USDC_SOLANA_MINT}&currency=${currency}`,
       { token },
     ),
-  banks: (token: string) => call<PajBank[]>("/pub/bank", { token }),
+  /**
+   * PAJ's live /pub/bank doesn't always match its documented shape (some
+   * entries have no `name`), so normalise defensively and drop anything we
+   * can't show or pay to. The raw keys are logged once to see the real shape.
+   */
+  async banks(token: string): Promise<PajBank[]> {
+    const raw = await call<unknown>("/pub/bank", { token });
+    const list = (Array.isArray(raw) ? raw : ((raw as { data?: unknown[] })?.data ?? [])) as Record<string, unknown>[];
+    if (!loggedBankShape && list.length) {
+      loggedBankShape = true;
+      const missing = list.filter((b) => typeof b?.name !== "string").length;
+      log("paj", `bank list: ${list.length} entries, keys [${Object.keys(list[0] ?? {}).join(", ")}], ${missing} without name`);
+    }
+    const str = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim() : undefined);
+    const banks: PajBank[] = [];
+    for (const b of list) {
+      if (!b || typeof b !== "object") continue;
+      const id = str(b.id) ?? str(b._id);
+      const name = str(b.name) ?? str(b.bankName) ?? str(b.bank_name) ?? str(b.title);
+      if (!id || !name) continue;
+      banks.push({
+        id,
+        name,
+        code: str(b.code) ?? str(b.bankCode) ?? "",
+        logo: str(b.logo),
+        country: str(b.country) ?? "",
+      });
+    }
+    return banks;
+  },
   resolveAccount: (token: string, bankId: string, accountNumber: string) =>
     call<{ accountName: string; accountNumber: string; bank: PajBank }>(
       `/pub/bank-account/confirm?bankId=${encodeURIComponent(bankId)}&accountNumber=${encodeURIComponent(accountNumber)}`,
@@ -91,7 +122,25 @@ export const paj = {
     ),
   saveAccount: (token: string, bankId: string, accountNumber: string) =>
     call<PajSavedAccount>("/pub/bank-account", { method: "POST", token, body: { bankId, accountNumber } }),
-  savedAccounts: (token: string) => call<PajSavedAccount[]>("/pub/bank-account", { token }),
+  /** Saved accounts; `bank` may come back as an id or as a bank object. */
+  async savedAccounts(token: string): Promise<PajSavedAccount[]> {
+    const raw = await call<unknown>("/pub/bank-account", { token });
+    const list = (Array.isArray(raw) ? raw : ((raw as { data?: unknown[] })?.data ?? [])) as Record<string, unknown>[];
+    return list
+      .filter((a) => a && typeof a === "object")
+      .map((a) => {
+        const bank = a.bank as unknown;
+        const bankId =
+          typeof bank === "string" ? bank : ((bank as { id?: string; _id?: string } | null)?.id ?? (bank as { _id?: string } | null)?._id ?? "");
+        return {
+          id: String(a.id ?? a._id ?? ""),
+          accountName: String(a.accountName ?? ""),
+          accountNumber: String(a.accountNumber ?? ""),
+          bank: bankId,
+        };
+      })
+      .filter((a) => a.id && a.bank && a.accountNumber);
+  },
   submitKyc: (token: string, idType: "BVN" | "NIN", idNumber: string, country: string) =>
     call<{ message: string }>("/pub/kyc", { method: "POST", token, body: { idType, idNumber, country } }),
 
