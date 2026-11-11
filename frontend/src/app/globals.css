@@ -129,6 +129,33 @@ body {
     0 1px 2px rgb(16 24 40 / 0.05);
 }
 
+/* Landing: glowing pulses travelling along the "electric" lines. */
+@keyframes paya-pulse {
+  from {
+    stroke-dashoffset: 1000;
+  }
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+.paya-pulse {
+  animation: paya-pulse 6s linear infinite;
+}
+
+/* Landing: gentle float for the hero phone. */
+@keyframes paya-float {
+  0%,
+  100% {
+    transform: translateY(0) rotate(-6deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(-6deg);
+  }
+}
+.paya-float {
+  animation: paya-float 7s ease-in-out infinite;
+}
+
 /* Shared focus ring for every interactive element. */
 @utility focus-ring {
   outline: none;

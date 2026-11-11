@@ -28,10 +28,13 @@ export function TabbedPanel({
   tabs,
   heading,
   id,
+  reverse = false,
 }: {
   tabs: Tab[];
   heading: ReactNode;
   id?: string;
+  /** Panel on the left, text on the right. */
+  reverse?: boolean;
 }) {
   const [active, setActive] = useState(0);
   const [paused, setPaused] = useState(false);
@@ -70,68 +73,58 @@ export function TabbedPanel({
   const current = tabs[active];
 
   return (
-    <section id={id} className="container-page scroll-mt-20 py-20 md:py-28">
-      <h2 className="max-w-xl text-3xl font-semibold tracking-tight text-balance md:text-5xl">
-        {heading}
-      </h2>
+    <section
+      id={id}
+      className="container-page grid scroll-mt-20 items-center gap-10 py-16 md:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)] md:gap-16 md:py-24"
+    >
+      <div className={cn(reverse && "md:order-2")}>
+        <h2 className="max-w-md text-3xl font-semibold tracking-tight text-balance md:text-4xl">{heading}</h2>
+
+        <div role="tablist" aria-label="Features" className="mt-8 flex gap-3" onMouseEnter={() => setPaused(true)}>
+          {tabs.map((tab, i) => (
+            <button
+              key={tab.id}
+              ref={(el) => {
+                tabRefs.current[i] = el;
+              }}
+              role="tab"
+              id={`${baseId}-tab-${i}`}
+              aria-selected={i === active}
+              aria-controls={`${baseId}-panel`}
+              tabIndex={i === active ? 0 : -1}
+              onClick={() => select(i)}
+              onKeyDown={(e) => onKeyDown(e, i)}
+              className="focus-ring group -m-2 rounded-md p-2"
+            >
+              <span className="sr-only">{tab.label}</span>
+              <span aria-hidden="true" className="block h-1 w-14 overflow-hidden rounded-full bg-border md:w-20">
+                <span
+                  className={cn(
+                    "block h-full origin-left rounded-full bg-accent transition-transform duration-200 ease-out",
+                    i === active ? (paused ? "scale-x-100" : "animate-progress") : "scale-x-0",
+                  )}
+                />
+              </span>
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-6 min-h-32 max-w-md" aria-live="polite">
+          <h3 className="text-lg font-semibold tracking-tight">{current.label}</h3>
+          <p className="mt-2 text-muted-foreground text-pretty">{current.description}</p>
+        </div>
+      </div>
 
       <div
         role="tabpanel"
         id={`${baseId}-panel`}
         aria-labelledby={`${baseId}-tab-${active}`}
-        className="mt-10 flex min-h-112 items-center justify-center rounded-4xl bg-card p-6 md:min-h-128 md:p-12"
+        className={cn(
+          "relative flex min-h-96 items-center justify-center overflow-hidden rounded-4xl bg-card p-6 md:min-h-112 md:p-10",
+          reverse && "md:order-1",
+        )}
       >
         {current.panel}
-      </div>
-
-      <div
-        role="tablist"
-        aria-label="Features"
-        className="mt-8 flex gap-3"
-        onMouseEnter={() => setPaused(true)}
-      >
-        {tabs.map((tab, i) => (
-          <button
-            key={tab.id}
-            ref={(el) => {
-              tabRefs.current[i] = el;
-            }}
-            role="tab"
-            id={`${baseId}-tab-${i}`}
-            aria-selected={i === active}
-            aria-controls={`${baseId}-panel`}
-            tabIndex={i === active ? 0 : -1}
-            onClick={() => select(i)}
-            onKeyDown={(e) => onKeyDown(e, i)}
-            className="focus-ring group -m-2 rounded-md p-2"
-          >
-            <span className="sr-only">{tab.label}</span>
-            <span
-              aria-hidden="true"
-              className={cn(
-                "block h-1 w-16 overflow-hidden rounded-full bg-border md:w-24",
-              )}
-            >
-              <span
-                className={cn(
-                  "block h-full origin-left rounded-full bg-accent transition-transform duration-200 ease-out",
-                  i === active
-                    ? paused
-                      ? "scale-x-100"
-                      : "animate-progress"
-                    : "scale-x-0",
-                )}
-              />
-            </span>
-          </button>
-        ))}
-      </div>
-
-      <div className="mt-8 max-w-2xl" aria-live="polite">
-        <h3 className="text-2xl font-semibold tracking-tight">{current.label}</h3>
-        <p className="mt-3 text-lg text-muted-foreground text-pretty">
-          {current.description}
-        </p>
       </div>
 
       <style>{`

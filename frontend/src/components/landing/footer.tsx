@@ -29,14 +29,13 @@ export function Footer() {
         </div>
         <ol className="mt-4 list-decimal space-y-3 pl-5 text-pretty">
           <li>
-            Paya is a technology platform, not a bank or a digital asset
-            custodian. Funds are held in audited smart contracts on NEAR until a
-            payout is confirmed.
+            Paya is a technology platform, not a bank or a custodian. Paya never holds your funds: you
+            sign every transaction in your own wallet, swaps settle through NEAR Intents, and bank
+            payouts are made by licensed payout partners.
           </li>
           <li>
-            Bank payouts are currently available in Nigeria (NGN). Rates are
-            indicative until an order is confirmed and may include a service fee
-            shown before you send.
+            Payouts are available in Nigeria (NGN), Ghana (GHS), Kenya (KES), Tanzania (TZS) and South
+            Africa (ZAR). Rates are indicative until you swap; every fee is shown before you confirm.
           </li>
         </ol>
       </div>
