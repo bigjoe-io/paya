@@ -289,7 +289,15 @@ export const pajV2 = {
       return new Set(list.filter((c) => c.isActive).map((c) => c.currency));
     }),
 
-  banks: () => cached("banks", 60 * 60_000, () => v2<PajV2Bank[]>("/bank")),
+  /** Banks with a name and code (PAJ's list includes ~200 entries without a name, which can't be shown or picked). */
+  banks: () =>
+    cached("banks", 60 * 60_000, async () => {
+      const seen = new Set<string>();
+      return (await v2<Partial<PajV2Bank>[]>("/bank"))
+        .filter((b): b is PajV2Bank => typeof b.name === "string" && b.name.trim() !== "" && typeof b.code === "string" && b.code !== "")
+        .filter((b) => (seen.has(b.code) ? false : (seen.add(b.code), true)))
+        .map((b) => ({ ...b, name: b.name.trim() }));
+    }),
 
   /** Accepts a bank code ("000013") or an older bank id; returns the code. */
   async bankCode(idOrCode: string) {

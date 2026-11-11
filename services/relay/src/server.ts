@@ -197,7 +197,7 @@ app.get("/banks", async (c) => {
   const list = (await pajV2.banks())
     .filter((b) => !b.country || match.has(b.country.toLowerCase()))
     .map((b) => ({ id: b.code, code: b.code, name: b.name, logo: b.logo, country: b.country }))
-    .sort((a, b) => a.name.localeCompare(b.name));
+    .sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
   return c.json(list);
 });
 
