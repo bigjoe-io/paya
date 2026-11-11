@@ -116,6 +116,17 @@ function createStore<T extends Row>(file: string, name: string) {
       rows.set(id, { ...r, ...patch, id, updated_at: now() });
       persist();
     },
+    /** Copy rows in as-is (migration). Rows whose id already exists are skipped, never overwritten. */
+    importRows: (incoming: T[]) => {
+      let added = 0;
+      for (const r of incoming) {
+        if (!r?.id || rows.has(r.id)) continue;
+        rows.set(r.id, { ...r });
+        added++;
+      }
+      if (added) persist();
+      return added;
+    },
     /** Record what happened, in order. Never edited, only appended. */
     event: (id: string, type: string, detail?: Record<string, unknown>) => {
       const r = rows.get(id);

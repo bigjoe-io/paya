@@ -210,6 +210,25 @@ admin.get("/users/:id", async (c) => {
   });
 });
 
+/**
+ * One-time migration from another relay (e.g. a laptop to the server).
+ * Adds rows that don't exist yet; never overwrites. Refused once the server
+ * has accounts of its own, so it can't be used to inject data later.
+ */
+admin.post("/import", async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { users?: User[]; swaps?: Swap[]; buys?: Buy[] } | null;
+  if (!body) return c.json({ error: "Expected JSON" }, 400);
+  const incomingEmails = new Set((body.users ?? []).map((u) => u.email));
+  const foreign = users.all().filter((u) => !incomingEmails.has(u.email));
+  if (foreign.length) return c.json({ error: "This server already has its own accounts; import refused" }, 409);
+  const result = {
+    users: users.importRows(body.users ?? []),
+    swaps: swaps.importRows(body.swaps ?? []),
+    buys: buys.importRows(body.buys ?? []),
+  };
+  return c.json({ imported: result, totals: { users: users.all().length, swaps: swaps.all().length, buys: buys.all().length } });
+});
+
 admin.get("/audit", (c) => {
   const limit = Math.min(Number(c.req.query("limit") ?? 300) || 300, 2000);
   return c.json(readAudit(limit, c.req.query("q")));
