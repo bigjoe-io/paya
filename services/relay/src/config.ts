@@ -90,6 +90,8 @@ const schema = z.object({
    * Generate with: openssl rand -hex 32
    */
   ACCESS_SECRET: z.string().min(32, "ACCESS_SECRET must be at least 32 characters").optional(),
+  /** Optional shared tester code (e.g. for judges): unlimited uses, never expires, survives redeploys. */
+  PUBLIC_ACCESS_CODE: z.string().min(8).optional(),
   /** How often deposit addresses are checked for incoming NEAR. */
   DEPOSIT_POLL_MS: z.coerce.number().int().min(5000).default(15000),
   POLL_MS: z.coerce.number().int().min(2000).default(5000),
