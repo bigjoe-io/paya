@@ -1,140 +1,108 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
 import { swaps, users, type Swap, type SwapStatus } from "./db.js";
-import { pajTokenOf } from "./accounts.js";
 import { log, warn } from "./log.js";
-import { oneclick } from "./oneclick.js";
 import { paj, type PajStatus } from "./paj.js";
-import { DRY_RECIPIENT, MIN_CASHOUT_USDC, minCashoutNear, sizePayout } from "./quote.js";
+import { round2 } from "./quote.js";
+import * as rubic from "./rubic.js";
+import { fromUnits, sendUsdc, solBalance, toUnits, treasuryAddress, usdcBalance, usdcReceivedIn } from "./solana.js";
+import { pajTokenOf } from "./accounts.js";
 
 /**
- * A cash-out, end to end:
+ * A cash-out, end to end (no NEAR Intents):
  *
- *  1. createSwap   dry 1Click quote (X NEAR → Y USDC) → size the payout A
- *                  PAJ off-ramp order for A USDC → deposit address + exact amount T
- *                  1Click EXACT_OUTPUT: deliver exactly T USDC to that address
- *                  → depositAddress + amountIn NEAR
- *  2. the user's Paya address wraps amountIn NEAR and sends wNEAR to depositAddress
- *  3. watcher      1Click SUCCESS → PAJ PAID → COMPLETED → paid
- *
- * The NEAR moves: user's Paya address → Intents → USDC → PAJ → bank.
+ *  1. lock the best Rubic provider: NEAR → USDC, delivered to Paya's Solana wallet,
+ *     refunds to the user's NEAR address
+ *  2. the user's Paya address sends the NEAR to the provider's deposit address      → "swapping"
+ *  3. provider delivers USDC; we read exactly how much arrived
+ *  4. PAJ off-ramp order for that USDC; Paya's wallet sends PAJ the exact amount     → "paying"
+ *  5. PAJ pays the bank                                                              → "paid"
  */
 
-export type NewSwap = {
-  accountId: string;
+export type NewCashout = {
+  userId: string;
+  address: string; // user's Paya NEAR address
   near: number;
   currency: string;
   bankId: string;
   bankName: string;
   accountNumber: string;
   accountName: string;
+  estimatedFiat: number;
 };
 
-export async function createSwap(p: NewSwap, pajToken: string) {
+const STUCK_AFTER_MS = 3 * 60 * 60_000; // a provider that hasn't delivered in 3 h needs a human
+const CHECK_EVERY_MS = 60_000; // provider status (Rubic allows 10 calls/min)
+const lastCheck = new Map<string, number>();
+
+/** Step 1: lock a provider route and record the order. The caller sends the NEAR. */
+export async function lockCashout(p: NewCashout) {
+  const route = await rubic.lockBestRoute({
+    from: rubic.TOKENS.NEAR,
+    to: rubic.TOKENS.USDC_SOL,
+    amount: p.near,
+    receiver: treasuryAddress(),
+    refundAddress: p.address,
+    fromAddress: p.address,
+    acceptExtra: false, // a plain NEAR transfer can't carry a memo
+  });
   const id = `swp_${crypto.randomBytes(6).toString("hex")}`;
-  const yocto = BigInt(Math.round(p.near * 1e6)) * 10n ** 18n;
-
-  // 1. what this NEAR is worth in USDC, and the payout sized inside it
-  const dry = await oneclick.previewExactIn(yocto, p.accountId, DRY_RECIPIENT);
-  const { usdc, fee } = sizePayout(Number(dry.amountOut) / 1e6);
-  if (usdc < MIN_CASHOUT_USDC) throw new Error(`Minimum cash-out is ${await minCashoutNear()} NEAR`);
-
-  const base = {
+  const yocto = decToUnits(route.amountToSend, 24);
+  swaps.insert({
     id,
-    account_id: p.accountId,
+    account_id: p.address,
     currency: p.currency,
     bank_id: p.bankId,
     bank_name: p.bankName,
     account_number: p.accountNumber,
     account_name: p.accountName,
-    usdc_amount: usdc.toFixed(2),
-    fee_usdc: fee.toFixed(2),
+    usdc_amount: route.estimate.destinationTokenAmount,
+    amount_to_transfer: "0",
+    fee_usdc: "0",
+    rate: 0,
+    fiat_amount: p.estimatedFiat, // estimate until the USDC lands and PAJ prices it
+    paj_order_id: null,
+    paj_token: null,
+    receive_address: null,
+    deposit_address: route.depositAddress,
+    amount_in: yocto.toString(),
+    min_amount_in: null,
+    deposit_tx: null,
+    status: "awaiting_deposit",
     swap_status: null,
     payout_status: null,
     payment_reference: null,
-    deposit_tx: null,
-    error: null,
-  };
-
-  if (config.demo) {
-    const v = await paj.offrampValue(pajToken, usdc, p.currency);
-    swaps.insert({
-      ...base,
-      amount_to_transfer: (usdc + fee).toFixed(2),
-      rate: v.fiatAmount / usdc,
-      fiat_amount: Math.floor(v.fiatAmount),
-      paj_order_id: null,
-      paj_token: null,
-      receive_address: null,
-      deposit_address: null,
-      amount_in: dry.amountIn,
-      min_amount_in: dry.amountIn,
-      status: "awaiting_deposit",
-      demo: 1,
-    });
-    swaps.event(id, "created", { simulated: true, near: p.near, usdc, fiat: Math.floor(v.fiatAmount), currency: p.currency });
-    log("swap", `${id} SIMULATED ${p.near} NEAR → ${usdc} USDC → ${Math.floor(v.fiatAmount)} ${p.currency}`);
-    return { swap: swaps.byId(id)!, deposit: null };
-  }
-
-  // 2. PAJ order: where the USDC goes and exactly how much
-  const order = await paj.createOfframp(pajToken, {
-    bankId: p.bankId,
-    accountNumber: p.accountNumber,
-    currency: p.currency,
-    usdc,
-    feeUsdc: fee,
-    reference: id,
-  });
-  const tUnits = BigInt(Math.round(order.amount * 1e6));
-
-  // 3. 1Click: deliver exactly that USDC to PAJ; any unused NEAR is refunded to the user
-  const q = await oneclick.exactOut(tUnits, order.address, p.accountId);
-  if (!q.depositAddress) throw new Error("Swap quote returned no deposit address");
-
-  swaps.insert({
-    ...base,
-    amount_to_transfer: String(order.amount),
-    fee_usdc: String(order.fee ?? fee),
-    rate: order.rate,
-    fiat_amount: Math.floor(order.fiatAmount),
-    paj_order_id: order.id,
-    paj_token: pajToken,
-    receive_address: order.address,
-    deposit_address: q.depositAddress,
-    amount_in: q.amountIn,
-    min_amount_in: q.minAmountIn ?? q.amountIn,
-    status: "awaiting_deposit",
     demo: 0,
+    error: null,
+    rail: "rubic",
+    provider: route.provider,
+    rubic_id: route.rubicId,
+    exchange_id: route.exchangeId,
   });
   swaps.event(id, "created", {
     near: p.near,
-    amountInYocto: q.amountIn,
-    usdc: order.amount,
-    fiat: order.fiatAmount,
-    currency: p.currency,
-    rate: order.rate,
-    pajOrderId: order.id,
-    pajDepositAddress: order.address,
-    intentsDepositAddress: q.depositAddress,
+    provider: route.provider,
+    exchangeId: route.exchangeId,
+    providerDepositAddress: route.depositAddress,
+    expectedUsdc: route.estimate.destinationTokenAmount,
+    userId: p.userId,
   });
-  log("swap", `${id} PAJ ${order.id}: ${Number(q.amountIn) / 1e24} NEAR → ${order.amount} USDC → ${order.fiatAmount} ${p.currency}`);
-  return { swap: swaps.byId(id)!, deposit: { depositAddress: q.depositAddress, amountYocto: q.amountIn } };
+  log("swap", `${id} via ${route.provider}: ${p.near} NEAR → ~${route.estimate.destinationTokenAmount} USDC`);
+  return { swap: swaps.byId(id)!, depositAddress: route.depositAddress, yocto };
 }
 
-/** The wallet broadcast its transaction. */
-export async function recordDeposit(id: string, txHash: string) {
+/** Step 2 done: the NEAR left the user's address. */
+export function recordDeposit(id: string, txHash: string) {
   const s = swaps.byId(id);
   if (!s) throw new Error("Unknown swap");
   if (s.status !== "awaiting_deposit") return s;
   swaps.update(id, { deposit_tx: txHash, status: "swapping" });
-  swaps.event(id, "wallet_sent", { txHash });
-  if (!s.demo && s.deposit_address) await oneclick.submitDeposit(s.deposit_address, txHash);
-  log("swap", `${id} deposit ${txHash}`);
+  swaps.event(id, "near_sent", { txHash });
+  log("swap", `${id} NEAR sent ${txHash}`);
   return swaps.byId(id)!;
 }
 
-/** Our signing step failed before any NEAR moved: close the order with the reason. */
+/** Our send failed before any NEAR moved: close the order with the reason. */
 export function failSwap(id: string, message: string) {
   const s = swaps.byId(id);
   if (s) set(s, "failed", { error: message, paj_token: null });
@@ -150,11 +118,11 @@ export function startWatcher() {
     try {
       for (const s of swaps.active()) {
         try {
-          await (s.demo ? advanceDemo(s) : advance(s));
+          if (s.rail === "rubic") await advance(s);
+          else await advanceLegacy(s);
         } catch (e) {
           const msg = (e as Error).message;
           warn("watcher", `${s.id}: ${msg}`);
-          // Internal hiccups go to the timeline for support, not to the user.
           const last = s.events?.at(-1);
           if (!(last?.type === "watch_error" && last.detail?.message === msg)) swaps.event(s.id, "watch_error", { message: msg });
         }
@@ -164,32 +132,131 @@ export function startWatcher() {
     }
   };
   setInterval(() => void tick(), config.POLL_MS);
-  log("watcher", `polling every ${config.POLL_MS}ms (${config.demo ? "orders simulated" : "LIVE orders"})`);
+  log("watcher", `cash-outs via Rubic, polling every ${config.POLL_MS}ms`);
 }
 
 async function advance(s: Swap) {
+  const age = Date.now() - Date.parse(s.created_at);
+
   if (s.status === "awaiting_deposit") {
-    if (Date.now() - Date.parse(s.created_at) > 20 * 60_000) set(s, "expired", { error: "No deposit was sent" });
+    if (age > 20 * 60_000) set(s, "expired", { error: "The NEAR was never sent, so nothing left your balance." });
     return;
   }
-  if (s.status === "swapping" && s.deposit_address) {
-    const full = await oneclick.statusFull(s.deposit_address);
-    const st = full.status;
-    if (st !== s.swap_status || (full.outTx && full.outTx !== s.out_tx)) {
-      swaps.update(s.id, { swap_status: st, out_tx: full.outTx, intents_ref: full.correlationId });
-      swaps.event(s.id, "swap_status", { status: st, ...(full.outTx ? { tx: full.outTx } : {}) });
+
+  if (s.status === "swapping") {
+    // 3a. provider status (rate-limited)
+    if (!s.usdc_received) {
+      if (Date.now() - (lastCheck.get(s.id) ?? 0) < CHECK_EVERY_MS) return;
+      lastCheck.set(s.id, Date.now());
+      const st = await rubic.status(s.deposit_tx!, s.rubic_id!);
+      if (st.status !== s.swap_status || (st.destinationTxHash && st.destinationTxHash !== s.out_tx)) {
+        swaps.update(s.id, { swap_status: st.status, out_tx: st.destinationTxHash });
+        swaps.event(s.id, "provider_status", { status: st.status, ...(st.destinationTxHash ? { tx: st.destinationTxHash } : {}) });
+      }
+      if (st.status === "REVERTED") return set(s, "refunded", { error: "The exchange couldn't complete, so your NEAR was sent back to your Paya balance." });
+      if (st.status === "FAIL") return set(s, "failed", { error: "The exchange failed. Our team has the details and will sort it out." });
+      if (st.status === "KYC_REQUIRED")
+        return set(s, "failed", { error: "The exchange provider asked for a check on this transfer. Contact support with your Support ID." });
+      if (st.status !== "SUCCESS" || !st.destinationTxHash) {
+        if (age > STUCK_AFTER_MS && !s.events?.some((e) => e.type === "stuck"))
+          swaps.event(s.id, "stuck", { note: "Provider hasn't delivered in 3h; contact provider with exchange id", exchangeId: s.exchange_id, provider: s.provider });
+        return;
+      }
+      // 3b. how much USDC actually arrived
+      const units = await usdcReceivedIn(st.destinationTxHash);
+      if (units === null || units <= 0n) return; // tx not visible yet
+      swaps.update(s.id, { usdc_received: fromUnits(units).toString() });
+      swaps.event(s.id, "usdc_received", { usdc: fromUnits(units), tx: st.destinationTxHash });
+      s.usdc_received = fromUnits(units).toString();
     }
-    if (st === "SUCCESS") set(s, "paying");
-    else if (st === "REFUNDED") set(s, "refunded", { error: "The swap couldn't complete; your NEAR was returned to your Paya balance" });
-    else if (st === "FAILED" || st === "INCOMPLETE_DEPOSIT") set(s, "failed", { error: `Swap ${st.toLowerCase()}` });
+    // 4. PAJ order + exact payment
+    await payPaj(s);
     return;
   }
-  const owner = users.byAddress(s.account_id);
-  const token = (owner && pajTokenOf(owner)) || s.paj_token;
-  if (s.status === "paying" && s.paj_order_id && token) {
+
+  if (s.status === "paying" && s.paj_order_id) {
+    const owner = users.byAddress(s.account_id);
+    const token = (owner && pajTokenOf(owner)) || s.paj_token;
+    if (!token) return;
     const t = await paj.transaction(token, s.paj_order_id);
     applyPayout(s, t.status, t.signature);
   }
+}
+
+/**
+ * Orders placed on NEAR Intents before the switch to Rubic: read-only status
+ * until they finish or refund (NEAR Intents is no longer used for new orders).
+ */
+async function advanceLegacy(s: Swap) {
+  if (s.status === "swapping" && s.deposit_address) {
+    if (Date.now() - (lastCheck.get(s.id) ?? 0) < CHECK_EVERY_MS) return;
+    lastCheck.set(s.id, Date.now());
+    const r = await fetch(`https://1click.chaindefuser.com/v0/status?depositAddress=${encodeURIComponent(s.deposit_address)}`, { signal: AbortSignal.timeout(10_000) });
+    if (!r.ok) throw new Error(`Legacy swap status ${r.status}`);
+    const j = (await r.json()) as { status: string; swapDetails?: { destinationChainTxHashes?: { hash: string }[] } };
+    const out = j.swapDetails?.destinationChainTxHashes?.[0]?.hash ?? null;
+    if (j.status !== s.swap_status) {
+      swaps.update(s.id, { swap_status: j.status, out_tx: out });
+      swaps.event(s.id, "swap_status", { status: j.status, ...(out ? { tx: out } : {}) });
+    }
+    if (j.status === "SUCCESS") set(s, "paying");
+    else if (j.status === "REFUNDED") set(s, "refunded", { error: "The swap couldn't complete, so your NEAR was sent back to your Paya balance." });
+    else if (j.status === "FAILED") set(s, "failed", { error: "The swap failed. Our team has the details." });
+    return;
+  }
+  if (s.status === "paying" && s.paj_order_id) {
+    const owner = users.byAddress(s.account_id);
+    const token = (owner && pajTokenOf(owner)) || s.paj_token;
+    if (!token) return;
+    const t = await paj.transaction(token, s.paj_order_id);
+    applyPayout(s, t.status, t.signature);
+  }
+}
+
+async function payPaj(s: Swap) {
+  if (s.payout_started) return; // never send twice; a half-finished send is resolved by hand
+  const owner = users.byAddress(s.account_id);
+  const token = owner ? pajTokenOf(owner) : null;
+  if (!token) {
+    if (!s.events?.some((e) => e.type === "waiting_sign_in")) swaps.event(s.id, "waiting_sign_in");
+    return; // the USDC waits safely in Paya's wallet until the user verifies their email again
+  }
+  const received = Number(s.usdc_received);
+  const fee = round2((received * config.FEE_PERCENT) / 100);
+  let usdc = round2(received - fee);
+  let order = await paj.createOfframp(token, {
+    bankId: s.bank_id,
+    accountNumber: s.account_number,
+    currency: s.currency,
+    usdc,
+    feeUsdc: fee,
+    reference: s.id,
+  });
+  // PAJ's amount includes the fee; it must fit inside what arrived.
+  if (order.amount > received) {
+    usdc = round2(usdc - (order.amount - received) - 0.01);
+    order = await paj.createOfframp(token, { bankId: s.bank_id, accountNumber: s.account_number, currency: s.currency, usdc, feeUsdc: fee, reference: s.id });
+    if (order.amount > received) throw new Error(`PAJ asks ${order.amount} USDC but only ${received} arrived`);
+  }
+  if ((await solBalance()) < 0.003) throw new Error("Paya's Solana wallet is low on SOL for fees");
+  if ((await usdcBalance()) < toUnits(order.amount)) throw new Error("Paya's Solana wallet doesn't hold this USDC yet");
+
+  swaps.update(s.id, {
+    payout_started: 1,
+    paj_order_id: order.id,
+    receive_address: order.address,
+    amount_to_transfer: String(order.amount),
+    usdc_amount: usdc.toFixed(2),
+    fee_usdc: String(order.fee ?? fee),
+    rate: order.rate,
+    fiat_amount: Math.floor(order.fiatAmount),
+  });
+  swaps.event(s.id, "paj_order", { pajOrderId: order.id, pajAddress: order.address, usdc: order.amount, fiat: order.fiatAmount, rate: order.rate });
+  const sig = await sendUsdc(order.address, toUnits(order.amount));
+  swaps.update(s.id, { payout_tx: sig, status: "paying" });
+  swaps.event(s.id, "usdc_sent_to_paj", { tx: sig, usdc: order.amount });
+  swaps.event(s.id, "status", { from: "swapping", to: "paying" });
+  log("swap", `${s.id} paid PAJ ${order.amount} USDC (${sig}) → ${order.fiatAmount} ${s.currency}`);
 }
 
 /** Shared by polling and webhooks. INIT → PAID (USDC received) → COMPLETED (bank paid). */
@@ -201,19 +268,17 @@ export function applyPayout(s: Swap, status: PajStatus, reference?: string) {
   if (status === "COMPLETED") set(s, "paid", { paj_token: null, ...(reference ? { payment_reference: reference } : {}) });
 }
 
-async function advanceDemo(s: Swap) {
-  const age = Date.now() - Date.parse(s.updated_at);
-  if (s.status === "swapping" && age > 6000) set(s, "paying", { swap_status: "SUCCESS" });
-  else if (s.status === "paying" && age > 6000)
-    set(s, "paid", { payout_status: "COMPLETED", payment_reference: `SIM-${s.id.slice(-6).toUpperCase()}` });
-  else if (s.status === "awaiting_deposit" && Date.now() - Date.parse(s.created_at) > 20 * 60_000)
-    set(s, "expired", { error: "Not confirmed" });
-}
-
 function set(s: Swap, status: SwapStatus, extra: Partial<Swap> = {}) {
   if (s.status === status) return;
   swaps.update(s.id, { status, ...extra });
   swaps.event(s.id, "status", { from: s.status, to: status, ...(extra.error ? { error: extra.error } : {}) });
   s.status = status;
   log("swap", `${s.id} → ${status}`);
+}
+
+/** "12.5" with 24 decimals → 12500000000000000000000000n, exactly (no float rounding). */
+export function decToUnits(dec: string, decimals: number): bigint {
+  const [whole, frac = ""] = dec.trim().split(".");
+  if (!/^\d+$/.test(whole) || !/^\d*$/.test(frac)) throw new Error(`Bad amount ${dec}`);
+  return BigInt(whole) * 10n ** BigInt(decimals) + BigInt((frac + "0".repeat(decimals)).slice(0, decimals) || "0");
 }

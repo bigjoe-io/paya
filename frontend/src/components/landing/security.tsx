@@ -21,7 +21,7 @@ const tabs: Tab[] = [
   {
     id: "refunds",
     label: "Refunds built in",
-    description: "If a swap can't complete, NEAR Intents returns your NEAR to your Paya address automatically. Any unused slippage buffer comes back too.",
+    description: "If an exchange can't complete, your NEAR is returned to your Paya address automatically, and purchases retry with another provider.",
     panel: <IconPair a={<RotateCcw className="size-10" aria-hidden="true" />} b={<span className="font-mono text-lg font-semibold text-white">NEAR</span>} />,
   },
 ];
@@ -41,9 +41,9 @@ export function Security() {
               <ShieldCheck className="size-7" aria-hidden="true" />
             </span>
             <div className="mt-16">
-              <h3 className="text-2xl font-semibold tracking-tight">NEAR&apos;s security standard</h3>
+              <h3 className="text-2xl font-semibold tracking-tight">Verifiable on-chain</h3>
               <p className="mt-2 max-w-md text-inverse-muted text-pretty">
-                Swaps settle through NEAR Intents, so every step is on-chain and anyone can verify it.
+                Every transfer is on-chain, and each order shows its NEAR and Solana transaction IDs so anyone can verify it.
               </p>
             </div>
           </div>

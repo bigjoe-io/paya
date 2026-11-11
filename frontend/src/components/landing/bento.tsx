@@ -57,7 +57,7 @@ export function Bento() {
 function FlowTile() {
   const steps = [
     { label: "Your Paya address", sub: "NEAR" },
-    { label: "NEAR Intents", sub: "→ USDC" },
+    { label: "Best exchange rate", sub: "→ USDC" },
     { label: "Your bank", sub: "₦ · GH₵ · KSh" },
   ];
   return (

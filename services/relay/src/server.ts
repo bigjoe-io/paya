@@ -4,7 +4,6 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { swaps, users, type Swap, type User } from "./db.js";
 import { log } from "./log.js";
-import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { minCashoutNear, preview } from "./quote.js";
 import { applyPayout } from "./swaps.js";
@@ -80,11 +79,21 @@ app.get("/currencies", (c) =>
 );
 
 let nearPrice: { at: number; usd: number } | null = null;
+/** NEAR/USD: CoinGecko, falling back to Gate's order book. */
+async function nearUsd(): Promise<number> {
+  try {
+    const r = await fetch("https://api.coingecko.com/api/v3/simple/price?ids=near&vs_currencies=usd", { signal: AbortSignal.timeout(8000) });
+    const v = ((await r.json()) as { near?: { usd?: number } }).near?.usd;
+    if (v) return v;
+  } catch {
+    /* fall through */
+  }
+  const r = await fetch("https://api.gateio.ws/api/v4/spot/tickers?currency_pair=NEAR_USDT", { signal: AbortSignal.timeout(8000) });
+  return Number(((await r.json()) as { last: string }[])[0]?.last ?? 0);
+}
 app.get("/prices", async (c) => {
   if (!nearPrice || Date.now() - nearPrice.at > 60_000) {
-    const r = await fetch("https://1click.chaindefuser.com/v0/tokens", { signal: AbortSignal.timeout(10000) });
-    const t = (await r.json()) as { assetId: string; price: number }[];
-    nearPrice = { at: Date.now(), usd: t.find((x) => x.assetId === ASSET_WNEAR)?.price ?? 0 };
+    nearPrice = { at: Date.now(), usd: await nearUsd() };
   }
   const ngnPerUsd = await paj.publicNgnRate().catch(() => null);
   return c.json({ nearUsd: nearPrice.usd, ngnPerUsd });
@@ -361,8 +370,10 @@ function publicBuy(b: Buy) {
     error: b.error,
     // Share the order id with support; the hashes show where the money went.
     supportId: b.id,
-    solanaTx: b.paj_tx ?? null, // PAJ → NEAR Intents (USDC)
-    nearTx: b.out_tx ?? null, // NEAR Intents → your Paya address (NEAR), or the refund
+    provider: b.provider ?? null,
+    solanaTx: b.paj_tx ?? null, // PAJ → Paya's Solana wallet (USDC)
+    providerTx: b.swap_tx ?? null, // Paya's wallet → exchange provider (USDC)
+    nearTx: b.out_tx ?? null, // provider → your Paya address (NEAR)
     intentsRef: b.intents_ref ?? null,
     createdAt: b.created_at,
     updatedAt: b.updated_at,
@@ -386,9 +397,11 @@ function publicSwap(s: Swap) {
     depositTx: s.deposit_tx,
     paymentReference: s.payment_reference,
     supportId: s.id,
-    nearTx: s.deposit_tx && s.deposit_tx !== "simulated" ? s.deposit_tx : null, // your Paya address → NEAR Intents
-    solanaTx: s.status !== "refunded" ? (s.out_tx ?? null) : null, // NEAR Intents → PAJ (USDC)
-    refundTx: s.status === "refunded" ? (s.out_tx ?? null) : null, // NEAR returned to your address
+    provider: s.provider ?? null,
+    nearTx: s.deposit_tx && s.deposit_tx !== "simulated" ? s.deposit_tx : null, // your Paya address → exchange provider
+    providerTx: s.status !== "refunded" ? (s.out_tx ?? null) : null, // provider → Paya's Solana wallet (USDC)
+    solanaTx: s.payout_tx ?? null, // Paya's Solana wallet → PAJ (USDC)
+    refundTx: s.status === "refunded" ? (s.out_tx ?? null) : null,
     intentsRef: s.intents_ref ?? null,
     error: s.error,
     createdAt: s.created_at,

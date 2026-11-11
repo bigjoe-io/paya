@@ -3,11 +3,12 @@ import { audit, last4 } from "./audit.js";
 import { config } from "./config.js";
 import { buys, swaps, users, type User } from "./db.js";
 import { log, warn } from "./log.js";
-import { accountExists, addressFor, balances, SEND_COST, sendNear, sendToIntents, toNear, toYocto, unwrap, UNWRAP_COST } from "./near.js";
-import { minCashoutNear } from "./quote.js";
+import { accountExists, addressFor, balances, SEND_COST, sendNear, toNear, toYocto, unwrap, UNWRAP_COST } from "./near.js";
+import { minCashoutNear, preview } from "./quote.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { decrypt, encrypt } from "./secrets.js";
-import { createSwap, failSwap, recordDeposit } from "./swaps.js";
+import { failSwap, lockCashout, recordDeposit } from "./swaps.js";
+import { solBalance } from "./solana.js";
 
 /**
  * A Paya account: one email ⇄ one NEAR address ⇄ one payout bank.
@@ -163,6 +164,9 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
       throw new Error("Link a bank account first");
     const token = requirePaj(u);
     if (hasOpenCashOut(u)) throw new Error("A cash-out is already being sent. Try again in a moment.");
+    if (config.demo) throw new Error("Cash-outs are switched off on this server (LIVE_ORDERS=false)");
+    // Paya's Solana wallet forwards the USDC to PAJ; without SOL for fees the order would stall halfway.
+    if ((await solBalance().catch(() => 0)) < 0.004) throw new Error("Cash-outs are paused for a few minutes for maintenance. Your NEAR is safe; please try again shortly.");
 
     const b = await balances(u.address);
     const spendable = b.available > RESERVE() ? b.available - RESERVE() : 0n;
@@ -172,32 +176,28 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
     const min = await minCashoutNear();
     if (near < min) throw new Error(`Minimum cash-out is ${min} NEAR`);
 
-    const { swap, deposit } = await createSwap(
-      {
-        accountId: u.address,
-        near,
-        currency: u.currency,
-        bankId: u.bank_id,
-        bankName: u.bank_name,
-        accountNumber: u.account_number,
-        accountName: u.account_name,
-      },
-      token,
-    );
+    // Estimate what lands in the bank (the final figure is set when the USDC arrives).
+    const est = await preview(near, u.currency, u.address, token);
+    const { swap, depositAddress, yocto } = await lockCashout({
+      userId: u.id,
+      address: u.address,
+      near,
+      currency: u.currency,
+      bankId: u.bank_id,
+      bankName: u.bank_name,
+      accountNumber: u.account_number,
+      accountName: u.account_name,
+      estimatedFiat: est.fiatOut,
+    });
     swaps.event(swap.id, "trigger", { trigger, userId: u.id });
 
-    if (!deposit) {
-      // Orders simulated (LIVE_ORDERS off): walk the same steps, move nothing.
-      return recordDeposit(swap.id, "simulated");
-    }
-    const amount = BigInt(deposit.amountYocto);
-    if (amount + SEND_COST > b.available) {
-      failSwap(swap.id, "The rate moved before we could send. Nothing left your balance.");
-      throw new Error("The rate moved while we were locking it. Nothing was sent — try a slightly smaller amount.");
+    if (yocto + SEND_COST > b.available) {
+      failSwap(swap.id, "The amount changed before we could send. Nothing left your balance.");
+      throw new Error("The amount changed while we were locking the rate. Nothing was sent — try a slightly smaller amount.");
     }
     let hash: string;
     try {
-      hash = await sendToIntents(u.key_index, deposit.depositAddress, amount);
+      hash = await sendNear(u.key_index, depositAddress, yocto);
       cool(u);
     } catch (e) {
       cool(u);
@@ -206,7 +206,7 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
       failSwap(swap.id, "We couldn't send this cash-out. Nothing left your balance, so you can try again.");
       throw new Error("Couldn't send the NEAR. Nothing was taken from your balance. Please try again.");
     }
-    audit("cashout_sent", u.email, { swapId: swap.id, trigger, near, tx: hash, bank: u.bank_name, account: last4(u.account_number) });
+    audit("cashout_sent", u.email, { swapId: swap.id, trigger, near, tx: hash, provider: swap.provider, bank: u.bank_name, account: last4(u.account_number) });
     return recordDeposit(swap.id, hash);
   });
 }

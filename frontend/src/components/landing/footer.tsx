@@ -31,7 +31,7 @@ export function Footer() {
           <li>
             Paya is a technology platform, not a bank. Each account has its own NEAR address, managed
             by Paya: NEAR sent there is cashed out to your verified bank account or sent on your
-            instruction. Swaps settle through NEAR Intents, and bank payouts are made by licensed
+            instruction. Conversions are routed to the best available exchange provider, and bank payouts are made by licensed
             payout partners.
           </li>
           <li>

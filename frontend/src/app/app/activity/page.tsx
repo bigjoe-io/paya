@@ -144,7 +144,7 @@ export default function ActivityPage() {
                       {LABEL[s.status]}
                     </span>
                     </div>
-                    <TxDetails ids={[["Support ID", s.supportId ?? s.id, null], ["NEAR sent (NEAR)", s.nearTx, s.nearTx ? `https://nearblocks.io/txns/${s.nearTx}` : null], ["USDC to payout (Solana)", s.solanaTx, s.solanaTx ? `https://solscan.io/tx/${s.solanaTx}` : null], ["NEAR returned (NEAR)", s.refundTx, s.refundTx ? `https://nearblocks.io/txns/${s.refundTx}` : null], ["Bank reference", s.paymentReference, null]]} />
+                    <TxDetails ids={[["Support ID", s.supportId ?? s.id, null], ["NEAR sent (NEAR)", s.nearTx, s.nearTx ? `https://nearblocks.io/txns/${s.nearTx}` : null], ["Exchanged by", s.provider, null], ["USDC received (Solana)", s.providerTx, s.providerTx ? `https://solscan.io/tx/${s.providerTx}` : null], ["USDC to payout (Solana)", s.solanaTx, s.solanaTx ? `https://solscan.io/tx/${s.solanaTx}` : null], ["NEAR returned (NEAR)", s.refundTx, s.refundTx ? `https://nearblocks.io/txns/${s.refundTx}` : null], ["Bank reference", s.paymentReference, null]]} />
                   </li>
                 );
               })}
@@ -191,7 +191,7 @@ function BuyRow({ b, cur }: { b: Buy; cur?: Currency }) {
         {BUY_LABEL[b.status]}
       </span>
       </div>
-      <TxDetails ids={[["Support ID", b.supportId ?? b.id, null], ["USDC sent (Solana)", b.solanaTx, b.solanaTx ? `https://solscan.io/tx/${b.solanaTx}` : null], ["NEAR delivered (NEAR)", b.nearTx, b.nearTx ? `https://nearblocks.io/txns/${b.nearTx}` : null]]} />
+      <TxDetails ids={[["Support ID", b.supportId ?? b.id, null], ["USDC from payment (Solana)", b.solanaTx, b.solanaTx ? `https://solscan.io/tx/${b.solanaTx}` : null], ["Exchanged by", b.provider, null], ["USDC to exchange (Solana)", b.providerTx, b.providerTx ? `https://solscan.io/tx/${b.providerTx}` : null], ["NEAR delivered (NEAR)", b.nearTx, b.nearTx ? `https://nearblocks.io/txns/${b.nearTx}` : null]]} />
     </li>
   );
 }

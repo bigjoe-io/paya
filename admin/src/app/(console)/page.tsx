@@ -18,9 +18,14 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/">)
   if (/^swp_[0-9a-f]+$/.test(q.trim())) redirect(`/swaps/${q.trim()}`);
   if (/^buy_[0-9a-f]+$/.test(q.trim())) redirect(`/buys/${q.trim()}`);
 
-  let stats, list: AdminSwap[], buyMatches: AdminBuy[];
+  let stats, list: AdminSwap[], buyMatches: AdminBuy[], treasury: Awaited<ReturnType<typeof relay.treasury>> | null;
   try {
-    [stats, list, buyMatches] = await Promise.all([relay.stats(), relay.swaps({ q, status, mode }), q ? relay.buys(q) : Promise.resolve([])]);
+    [stats, list, buyMatches, treasury] = await Promise.all([
+      relay.stats(),
+      relay.swaps({ q, status, mode }),
+      q ? relay.buys(q) : Promise.resolve([]),
+      relay.treasury().catch(() => null),
+    ]);
   } catch (e) {
     return <RelayDown message={e instanceof RelayError ? e.message : "Unexpected error"} />;
   }
@@ -59,6 +64,17 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/">)
       )}
 
       {/* filters: plain GET form, so every view is a shareable URL */}
+      {treasury && (
+        <Card className={treasury.lowSol ? "border-red-300 bg-red-50 p-4" : "p-4"}>
+          <p className="text-xs text-neutral-500">Paya Solana wallet (USDC in transit, SOL for fees)</p>
+          <p className="mt-1 font-mono text-xs break-all">{treasury.solanaAddress}</p>
+          <p className="mt-2 text-sm tabular-nums">
+            {treasury.sol ?? "—"} SOL · {treasury.usdc ?? "—"} USDC
+            {treasury.lowSol && <span className="ml-2 font-medium text-red-700">Low on SOL: top up ~0.02 SOL or orders will pause</span>}
+          </p>
+        </Card>
+      )}
+
       <form className="flex flex-wrap gap-2" role="search">
         <label className="relative min-w-72 flex-1">
           <span className="sr-only">Search</span>

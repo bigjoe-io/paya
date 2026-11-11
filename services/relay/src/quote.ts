@@ -1,35 +1,53 @@
 import { config } from "./config.js";
-import { oneclick } from "./oneclick.js";
 import { paj } from "./paj.js";
 import { indicativeSellRate } from "./fx.js";
+import { quote as rubicQuote, spareCapacity, TOKENS } from "./rubic.js";
 
 /**
  * Pricing for "X NEAR → local currency".
  *
- *   NEAR ──1Click──▶ USDC on Solana ──PAJ──▶ bank payout
+ *   NEAR ──Rubic provider (ChangeNOW, SimpleSwap, …)──▶ USDC in Paya's Solana wallet ──PAJ──▶ bank
  *
- * PAJ must receive exactly the `amount` its order returns. 1Click then
- * delivers that exact amount, adding a ~1% buffer on the NEAR side (unused
- * part refunded). We size the payout so that buffer still fits inside the
- * NEAR the user typed.
+ * The USDC amount is what the best provider quotes right now; the payout is
+ * sized on the USDC that actually arrives, so the preview is an estimate.
+ * Rubic's free API allows 10 calls a minute, so previews use cached quotes
+ * and, when the budget is tight, the last known rate for a similar size.
  */
-const SLIPPAGE_BUFFER = 1.012;
-/** Placeholder recipient for dry quotes (any valid Solana address; nothing is sent). */
-export const DRY_RECIPIENT = "7EcJ1eB6J3ggRrGkQWsT4ZP8dkqPZ4JmW4YRwR7Qp5cY";
-
 export const round2 = (n: number) => Math.floor(n * 100) / 100;
 
-/** USDC the payout is priced on and Paya's fee, given the USDC the swap yields. */
-export function sizePayout(usdcOut: number) {
-  const usdc = round2(usdcOut / SLIPPAGE_BUFFER / (1 + config.FEE_PERCENT / 100));
-  const fee = Math.max(0, round2((usdc * config.FEE_PERCENT) / 100));
-  return { usdc, fee };
+/** Smallest payout worth making (USDC), and the smallest sell. */
+export const MIN_CASHOUT_USDC = 2.5;
+export const MIN_SELL_NEAR = 1;
+
+type Point = { near: number; usdc: number; at: number; provider: string; minutes: number };
+const points: Point[] = []; // recent quotes, for estimates when we can't spend a call
+
+/** USDC the best provider gives for `near` NEAR now (cached ~60 s). */
+export async function sellQuote(near: number): Promise<{ usdc: number; provider: string; minutes: number; estimated: boolean }> {
+  const fresh = points.find((p) => Math.abs(p.near - near) / near < 0.01 && Date.now() - p.at < 60_000);
+  if (fresh) return { usdc: fresh.usdc, provider: fresh.provider, minutes: fresh.minutes, estimated: false };
+  if (spareCapacity() > 3 || points.length === 0) {
+    const { routes, smallestMin } = await rubicQuote(TOKENS.NEAR, TOKENS.USDC_SOL, near);
+    const best = routes[0];
+    if (!best) throw new Error(smallestMin ? `Minimum cash-out is about ${Math.ceil(smallestMin * 100) / 100} NEAR` : "Rates are unavailable right now. Try again in a minute.");
+    const p = { near, usdc: Number(best.estimate.destinationTokenAmount), at: Date.now(), provider: best.providerType, minutes: best.estimate.durationInMinutes || 4 };
+    points.unshift(p);
+    points.splice(40);
+    return { usdc: p.usdc, provider: p.provider, minutes: p.minutes, estimated: false };
+  }
+  // Out of spare calls: scale the nearest recent quote (providers charge ~a fixed fee + a %; nearest size keeps that honest).
+  const near0 = [...points].sort((a, b) => Math.abs(Math.log(a.near / near)) - Math.abs(Math.log(b.near / near)))[0];
+  return { usdc: (near0.usdc / near0.near) * near, provider: near0.provider, minutes: near0.minutes, estimated: true };
+}
+
+export async function minCashoutNear() {
+  return MIN_SELL_NEAR;
 }
 
 export type Preview = {
   nearIn: number;
-  usdcOut: number; // after the swap (1Click fee + Solana withdraw fee already taken)
-  usdcPayout: number;
+  usdcOut: number; // what the exchange provider delivers
+  usdcPayout: number; // what PAJ pays out on
   feeUsdc: number;
   feePercent: number;
   rate: number; // local currency per USDC
@@ -39,36 +57,20 @@ export type Preview = {
   /** "account": priced for this user by PAJ; "public": indicative rate before sign-in. */
   priceSource: "account" | "public";
   etaSeconds: number;
+  provider: string;
 };
 
-/** Smallest payout worth making (USDC). */
-export const MIN_CASHOUT_USDC = 1.5;
-let nearUsdc: { at: number; v: number } | null = null;
-
-/** Smallest NEAR amount that cashes out, at today's rate (+5% cushion, rounded up to 0.01). */
-export async function minCashoutNear() {
-  if (!nearUsdc || Date.now() - nearUsdc.at > 2 * 60_000) {
-    const q = await oneclick.previewExactIn(10n ** 24n, "near", DRY_RECIPIENT);
-    nearUsdc = { at: Date.now(), v: Number(q.amountOut) / 1e6 };
-  }
-  const usdcNeeded = MIN_CASHOUT_USDC * SLIPPAGE_BUFFER * (1 + config.FEE_PERCENT / 100);
-  return Math.ceil(((usdcNeeded / nearUsdc.v) * 1.05) * 100) / 100;
-}
-
-export async function preview(nearIn: number, currency: string, refundTo: string, token?: string): Promise<Preview> {
-  const min = await minCashoutNear();
-  if (nearIn < min) throw new Error(`Minimum cash-out is ${min} NEAR`);
-  const yocto = BigInt(Math.round(nearIn * 1e6)) * 10n ** 18n;
-  const q = await oneclick.previewExactIn(yocto, refundTo, DRY_RECIPIENT);
-  const usdcOut = Number(q.amountOut) / 1e6;
-  const { usdc, fee } = sizePayout(usdcOut);
-  if (usdc <= 0) throw new Error("Amount too small");
+export async function preview(nearIn: number, currency: string, _refundTo: string, token?: string): Promise<Preview> {
+  if (nearIn < MIN_SELL_NEAR) throw new Error(`Minimum cash-out is ${MIN_SELL_NEAR} NEAR`);
+  const q = await sellQuote(nearIn);
+  const fee = round2((q.usdc * config.FEE_PERCENT) / 100);
+  const usdc = round2(q.usdc - fee);
+  if (usdc < MIN_CASHOUT_USDC) throw new Error(`Minimum cash-out is about ${MIN_CASHOUT_USDC} USDC worth of NEAR`);
 
   let fiatOut: number;
   let priceSource: Preview["priceSource"];
   if (token) {
-    const v = await paj.offrampValue(token, usdc, currency);
-    fiatOut = Math.floor(v.fiatAmount);
+    fiatOut = Math.floor((await paj.offrampValue(token, usdc, currency)).fiatAmount);
     priceSource = "account";
   } else if (currency === "NGN") {
     fiatOut = Math.floor(usdc * (await paj.publicNgnRate()));
@@ -77,10 +79,9 @@ export async function preview(nearIn: number, currency: string, refundTo: string
     fiatOut = Math.floor(usdc * (await indicativeSellRate(currency)));
     priceSource = "public";
   }
-
   return {
     nearIn,
-    usdcOut,
+    usdcOut: q.usdc,
     usdcPayout: usdc,
     feeUsdc: fee,
     feePercent: config.FEE_PERCENT,
@@ -89,6 +90,7 @@ export async function preview(nearIn: number, currency: string, refundTo: string
     fiatPerNear: fiatOut / nearIn,
     currency,
     priceSource,
-    etaSeconds: (q.timeEstimate ?? 20) + 60,
+    etaSeconds: (q.minutes + 2) * 60, // provider + PAJ payout
+    provider: q.provider,
   };
 }

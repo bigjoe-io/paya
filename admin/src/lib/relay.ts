@@ -33,6 +33,11 @@ export type AdminSwap = {
   payment_reference: string | null;
   out_tx?: string | null;
   intents_ref?: string | null;
+  rail?: string;
+  provider?: string | null;
+  exchange_id?: string | null;
+  usdc_received?: string | null;
+  payout_tx?: string | null;
   demo: number;
   error: string | null;
   created_at: string;
@@ -145,6 +150,7 @@ export const relay = {
     call<{ checkedAt: string; swap: string | null; note?: string }>(`/swaps/${encodeURIComponent(id)}/recheck`, { method: "POST" }),
   buys: (q?: string) => call<AdminBuy[]>(`/buys${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   buy: (id: string) => call<AdminBuy>(`/buys/${encodeURIComponent(id)}`),
+  treasury: () => call<{ solanaAddress: string; sol: number | null; usdc: number | null; lowSol: boolean }>("/treasury"),
   users: (q?: string) => call<AdminUser[]>(`/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   user: (id: string) => call<AdminUserDetail>(`/users/${encodeURIComponent(id)}`),
   audit: (q?: string) => call<AuditEntry[]>(`/audit?limit=500${q ? `&q=${encodeURIComponent(q)}` : ""}`),

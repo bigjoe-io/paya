@@ -90,10 +90,14 @@ export default async function SwapPage({ params }: PageProps<"/swaps/[id]">) {
             v={s.payment_reference ? <Id value={s.payment_reference} href={s.demo ? undefined : explorer.solanaTx(s.payment_reference)} /> : "—"}
           />
           <Row
-            k={s.status === "refunded" ? "Refund tx (NEAR back to user)" : "USDC to PAJ (Solana tx)"}
+            k={s.status === "refunded" ? "Refund tx (NEAR back to user)" : "Provider → Paya wallet (Solana tx)"}
             v={s.out_tx ? <Id value={s.out_tx} href={s.status === "refunded" ? explorer.nearTx(s.out_tx) : explorer.solanaTx(s.out_tx)} /> : "—"}
           />
-          <Row k="NEAR Intents support ref" v={s.intents_ref ? <Id value={s.intents_ref} /> : "—"} />
+          <Row k="Rail · provider" v={`${s.rail ?? "intents (legacy)"}${s.provider ? ` · ${s.provider}` : ""}`} />
+          <Row k="Provider exchange id" v={s.exchange_id ? <Id value={s.exchange_id} /> : "—"} />
+          <Row k="USDC received in Paya wallet" v={s.usdc_received ?? "—"} />
+          <Row k="USDC to PAJ (Paya wallet tx)" v={s.payout_tx ? <Id value={s.payout_tx} href={explorer.solanaTx(s.payout_tx)} /> : "—"} />
+          <Row k="NEAR Intents support ref (legacy)" v={s.intents_ref ? <Id value={s.intents_ref} /> : "—"} />
           <Row k="Intents status (last seen)" v={s.swap_status ?? "—"} />
           <Row k="PAJ status (last seen)" v={s.payout_status ?? "—"} />
         </dl>

@@ -4,7 +4,8 @@ import { readAudit } from "./audit.js";
 import { config } from "./config.js";
 import { buys, swaps, users, type Buy, type Swap, type User } from "./db.js";
 import { balances, toNear } from "./near.js";
-import { oneclick } from "./oneclick.js";
+import * as rubic from "./rubic.js";
+import { solBalance, treasuryAddress, usdcBalance, fromUnits } from "./solana.js";
 
 /**
  * Admin API, mounted at /admin. Server-to-server only: the admin app calls it
@@ -40,6 +41,9 @@ function haystack(s: Swap) {
     s.payment_reference,
     s.out_tx,
     s.intents_ref,
+    s.payout_tx,
+    s.exchange_id,
+    s.provider,
     s.deposit_address,
     s.receive_address,
     s.paj_order_id,
@@ -116,20 +120,17 @@ admin.get("/swaps/:id", (c) => {
   return s ? c.json(full(s)) : c.json({ error: "Not found" }, 404);
 });
 
-/** Ask 1Click for the swap's status right now (read-only; doesn't change the record). */
+/** Ask the exchange provider (via Rubic) for this order's status right now. Read-only. */
 admin.post("/swaps/:id/recheck", async (c) => {
   const s = swaps.byId(c.req.param("id"));
   if (!s) return c.json({ error: "Not found" }, 404);
-  if (!s.deposit_address) return c.json({ checkedAt: new Date().toISOString(), swap: null, note: "No Intents deposit address (simulated order)" });
+  if (s.rail !== "rubic" || !s.deposit_tx || !s.rubic_id)
+    return c.json({ checkedAt: new Date().toISOString(), swap: null, note: s.rail === "rubic" ? "The NEAR hasn't been sent yet" : "Legacy NEAR Intents order" });
   try {
-    const st = await oneclick.status(s.deposit_address);
-    return c.json({ checkedAt: new Date().toISOString(), swap: st });
+    const st = await rubic.status(s.deposit_tx, s.rubic_id);
+    return c.json({ checkedAt: new Date().toISOString(), swap: `${st.status}${st.destinationTxHash ? ` · ${st.destinationTxHash}` : ""}`, note: `${s.provider} exchange ${s.exchange_id ?? ""}` });
   } catch (e) {
-    const msg = (e as Error).message;
-    const note = /404/.test(msg)
-      ? "NEAR Intents has no record of this deposit address: the user's wallet transaction never reached it."
-      : msg;
-    return c.json({ checkedAt: new Date().toISOString(), swap: null, note });
+    return c.json({ checkedAt: new Date().toISOString(), swap: null, note: (e as Error).message });
   }
 });
 
@@ -164,13 +165,19 @@ admin.get("/buys/:id", (c) => {
 admin.post("/buys/:id/recheck", async (c) => {
   const b = buys.byId(c.req.param("id"));
   if (!b) return c.json({ error: "Not found" }, 404);
-  if (!b.deposit_address) return c.json({ checkedAt: new Date().toISOString(), swap: null, note: "No Intents deposit address (simulated order)" });
+  if (!b.swap_tx || !b.rubic_id) return c.json({ checkedAt: new Date().toISOString(), swap: null, note: "No USDC sent to a provider yet" });
   try {
-    return c.json({ checkedAt: new Date().toISOString(), swap: await oneclick.status(b.deposit_address) });
+    const st = await rubic.status(b.swap_tx, b.rubic_id);
+    return c.json({ checkedAt: new Date().toISOString(), swap: `${st.status}${st.destinationTxHash ? ` · ${st.destinationTxHash}` : ""}`, note: b.provider ?? "" });
   } catch (e) {
-    const msg = (e as Error).message;
-    return c.json({ checkedAt: new Date().toISOString(), swap: null, note: /404/.test(msg) ? "NEAR Intents hasn't seen any USDC at this deposit address yet." : msg });
+    return c.json({ checkedAt: new Date().toISOString(), swap: null, note: (e as Error).message });
   }
+});
+
+/** Paya's Solana wallet: SOL for fees and USDC in transit. */
+admin.get("/treasury", async (c) => {
+  const [sol, usdc] = await Promise.all([solBalance().catch(() => null), usdcBalance().catch(() => null)]);
+  return c.json({ solanaAddress: treasuryAddress(), sol, usdc: usdc === null ? null : fromUnits(usdc), lowSol: sol !== null && sol < 0.01 });
 });
 
 /* ---------- accounts ---------- */

@@ -23,8 +23,13 @@ const schema = z.object({
   /** Mainnet only: NEAR Intents (1Click) and PAJ production have no testnet. */
   NEAR_RPC_URL: z.string().url().default("https://free.rpc.fastnear.com"),
 
-  /** Optional 1Click partner JWT: without it 1Click adds 0.25% to every quote. */
-  ONECLICK_JWT: z.string().optional().default(""),
+  /** Solana RPC for Paya's USDC wallet. Production: a paid RPC (Helius, QuickNode, Triton). */
+  SOLANA_RPC_URL: z.string().url().default("https://api.mainnet-beta.solana.com"),
+
+  /** Rubic API (swap aggregator). Free tier: 10 requests/min; ask Rubic for a pro key to lift it. */
+  RUBIC_API_URL: z.string().url().default("https://api-v2.rubic.exchange"),
+  RUBIC_API_KEY: z.string().optional().default(""),
+  RUBIC_REFERRER: z.string().default("paya"),
 
   /** PAJ business API key (production). */
   PAJ_API_KEY: z.string().optional().default(""),
@@ -71,7 +76,7 @@ const schema = z.object({
   /** Auto cash-out starts at this much spendable NEAR. */
   AUTO_MIN_NEAR: z.coerce.number().min(0.1).default(0.4),
   /** NEAR left in each address for fees. */
-  RESERVE_NEAR: z.coerce.number().min(0.01).default(0.07),
+  RESERVE_NEAR: z.coerce.number().min(0.01).default(0.02),
 
   PORT: z.coerce.number().int().default(8787),
   DB_PATH: z.string().default("./paya-data.json"),

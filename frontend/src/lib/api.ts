@@ -40,9 +40,13 @@ export type Swap = {
   paymentReference: string | null;
   /** Give this to support. */
   supportId?: string;
-  /** Paya address → NEAR Intents. */
+  /** Paya address → exchange provider (NEAR). */
   nearTx?: string | null;
-  /** NEAR Intents → PAJ (USDC on Solana). */
+  /** Exchange provider that converted it (ChangeNOW, SimpleSwap, …). */
+  provider?: string | null;
+  /** Provider → Paya's Solana wallet (USDC). */
+  providerTx?: string | null;
+  /** Paya's Solana wallet → PAJ (USDC). */
   solanaTx?: string | null;
   /** NEAR returned to the Paya address. */
   refundTx?: string | null;
@@ -86,9 +90,12 @@ export type Buy = {
   deadline: string;
   error: string | null;
   supportId?: string;
-  /** PAJ → NEAR Intents (USDC on Solana). */
+  provider?: string | null;
+  /** PAJ → Paya's Solana wallet (USDC). */
   solanaTx?: string | null;
-  /** NEAR Intents → Paya address (NEAR). */
+  /** Paya's wallet → exchange provider (USDC). */
+  providerTx?: string | null;
+  /** Provider → your Paya address (NEAR). */
   nearTx?: string | null;
   intentsRef?: string | null;
   createdAt: string;

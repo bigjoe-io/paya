@@ -104,26 +104,10 @@ const STORAGE_DEPOSIT = 1_250_000_000_000_000_000_000n; // 0.00125 NEAR, wrap.ne
  */
 const GAS = { storage: 10n * TGAS, wrap: 10n * TGAS, transfer: 15n * TGAS, unwrap: 10n * TGAS };
 const WORST_GAS_PRICE = 1_200_000_000n; // yocto per gas
-/** NEAR needed on top of the amount for a cash-out send. ≈0.0565 NEAR. */
-export const SEND_COST = 2n * STORAGE_DEPOSIT + (2n * GAS.storage + GAS.wrap + GAS.transfer) * WORST_GAS_PRICE;
+/** NEAR needed on top of the amount for a cash-out (a plain transfer to the provider). Generous: real cost ≈0.0001. */
+export const SEND_COST = 2_000_000_000_000_000_000_000n; // 0.002 NEAR
 /** NEAR needed to unwrap wNEAR. ≈0.012 NEAR. */
 export const UNWRAP_COST = GAS.unwrap * WORST_GAS_PRICE + 1n;
-
-/** Wrap `amount` NEAR and send it as wNEAR to a NEAR Intents deposit address. One transaction. */
-export async function sendToIntents(i: number, depositAddress: string, amount: bigint) {
-  const r = await accountFor(i).signAndSendTransaction({
-    receiverId: wrapContract(),
-    actions: [
-      // Register sender and receiver (no-op + refund if already registered), so near_deposit wraps the full amount.
-      actions.functionCall("storage_deposit", { registration_only: true }, GAS.storage, STORAGE_DEPOSIT),
-      actions.functionCall("storage_deposit", { account_id: depositAddress, registration_only: true }, GAS.storage, STORAGE_DEPOSIT),
-      actions.functionCall("near_deposit", {}, GAS.wrap, amount),
-      actions.functionCall("ft_transfer", { receiver_id: depositAddress, amount: amount.toString(), memo: "paya" }, GAS.transfer, 1n),
-    ],
-    waitUntil: "FINAL",
-  });
-  return r.transaction.hash as string;
-}
 
 /** Turn wNEAR back into native NEAR. */
 export async function unwrap(i: number, amount: bigint) {

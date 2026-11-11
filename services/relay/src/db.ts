@@ -39,8 +39,16 @@ export type Swap = {
   swap_status: string | null; // raw 1Click status
   payout_status: string | null; // raw PAJ status
   payment_reference: string | null;
-  /** Solana tx that delivered the USDC to PAJ (or NEAR tx of the refund). */
+  /** Rubic provider's tx delivering USDC to Paya's Solana wallet (or the refund). */
   out_tx?: string | null;
+  /** Which rail moved the money: "rubic" (current) or "intents" (legacy NEAR Intents orders). */
+  rail?: "rubic" | "intents";
+  provider?: string | null; // e.g. changenow, simple_swap
+  rubic_id?: string | null;
+  exchange_id?: string | null;
+  usdc_received?: string | null; // what actually landed in Paya's wallet
+  payout_tx?: string | null; // Paya wallet → PAJ (exact USDC)
+  payout_started?: number; // set before sending to PAJ: never send twice
   /** NEAR Intents support reference. */
   intents_ref?: string | null;
   demo: number;
@@ -160,8 +168,16 @@ export type Buy = {
   status: BuyStatus;
   payment_status: string | null; // raw PAJ status
   swap_status: string | null; // raw 1Click status
-  /** PAJ's Solana tx sending the USDC. */
+  /** PAJ's Solana tx sending the USDC to Paya's wallet. */
   paj_tx?: string | null;
+  rail?: "rubic" | "intents";
+  provider?: string | null;
+  rubic_id?: string | null;
+  usdc_received?: string | null;
+  /** Paya wallet → provider deposit (Solana tx). */
+  swap_tx?: string | null;
+  tried_providers?: string[];
+  retry_after?: string | null;
   /** NEAR tx that delivered the NEAR (or the refund). */
   out_tx?: string | null;
   intents_ref?: string | null;
