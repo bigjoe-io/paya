@@ -5,8 +5,8 @@
   "type": "module",
   "description": "Paya relay: watches deposit accounts, swaps NEAR to USDC via NEAR Intents, pays naira via the payout rail",
   "scripts": {
-    "dev": "node --experimental-sqlite --watch --import tsx src/index.ts",
-    "start": "node --experimental-sqlite --import tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
+    "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "test": "node --import tsx --test src/**/*.test.ts"
   },
@@ -21,6 +21,6 @@
     "typescript": "^5.7.0"
   },
   "engines": {
-    "node": ">=22.13"
+    "node": ">=20"
   }
 }

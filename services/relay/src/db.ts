@@ -1,9 +1,10 @@
-import { DatabaseSync } from "node:sqlite";
+import { existsSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { config } from "./config.js";
 
 /**
- * One table: a swap is one "NEAR → fiat" cash-out from a connected wallet.
- * Node's built-in SQLite, no native addon.
+ * Cash-out records, kept in one JSON file. The relay only tracks a handful of
+ * in-flight orders, so a file is enough and runs on any Node ≥ 20 (no native
+ * modules, no experimental flags). Writes are atomic: temp file + rename.
  */
 export type SwapStatus =
   | "awaiting_deposit" // order placed, waiting for the user's wallet to send NEAR
@@ -44,78 +45,51 @@ export type Swap = {
   updated_at: string;
 };
 
-export const db = new DatabaseSync(config.DB_PATH);
-db.exec("PRAGMA journal_mode = WAL");
-db.exec(`
-CREATE TABLE IF NOT EXISTS swaps (
-  id TEXT PRIMARY KEY,
-  account_id TEXT NOT NULL,
-  currency TEXT NOT NULL,
-  bank_id TEXT NOT NULL,
-  bank_name TEXT NOT NULL,
-  account_number TEXT NOT NULL,
-  account_name TEXT NOT NULL,
-  usdc_amount TEXT NOT NULL,
-  amount_to_transfer TEXT NOT NULL,
-  fee_usdc TEXT NOT NULL,
-  rate REAL NOT NULL,
-  fiat_amount REAL NOT NULL,
-  paj_order_id TEXT,
-  paj_token TEXT,
-  receive_address TEXT,
-  deposit_address TEXT,
-  amount_in TEXT NOT NULL,
-  min_amount_in TEXT,
-  deposit_tx TEXT,
-  status TEXT NOT NULL,
-  swap_status TEXT,
-  payout_status TEXT,
-  payment_reference TEXT,
-  demo INTEGER NOT NULL DEFAULT 0,
-  error TEXT,
-  created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now')),
-  updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-CREATE INDEX IF NOT EXISTS swaps_account ON swaps(account_id, created_at DESC);
-CREATE INDEX IF NOT EXISTS swaps_status ON swaps(status);
-CREATE TABLE IF NOT EXISTS webhook_events (
-  event_id TEXT PRIMARY KEY,
-  received_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ','now'))
-);
-`);
+const FILE = config.DB_PATH;
+const ACTIVE: SwapStatus[] = ["awaiting_deposit", "swapping", "paying"];
 
-type Param = string | number | null;
-const get = <T>(sql: string, ...p: Param[]) => db.prepare(sql).get(...p) as T | undefined;
-const all = <T>(sql: string, ...p: Param[]) => db.prepare(sql).all(...p) as T[];
-const run = (sql: string, ...p: Param[]) => db.prepare(sql).run(...p);
+function load(): Map<string, Swap> {
+  if (!existsSync(FILE)) return new Map();
+  try {
+    const list = JSON.parse(readFileSync(FILE, "utf8")) as Swap[];
+    return new Map(list.map((s) => [s.id, s]));
+  } catch (e) {
+    throw new Error(`Can't read ${FILE}: ${(e as Error).message}. Move it aside to start fresh.`);
+  }
+}
+
+const rows = load();
+
+function persist() {
+  const tmp = `${FILE}.tmp`;
+  writeFileSync(tmp, JSON.stringify([...rows.values()], null, 1), { mode: 0o600 });
+  renameSync(tmp, FILE);
+}
+
+const now = () => new Date().toISOString();
+const copy = (s: Swap | undefined) => (s ? { ...s } : undefined);
+const newestFirst = (a: Swap, b: Swap) => b.created_at.localeCompare(a.created_at);
 
 export const swaps = {
-  byId: (id: string) => get<Swap>("SELECT * FROM swaps WHERE id = ?", id),
-  byPajOrderId: (id: string) => get<Swap>("SELECT * FROM swaps WHERE paj_order_id = ?", id),
+  byId: (id: string) => copy(rows.get(id)),
+  byPajOrderId: (id: string) => copy([...rows.values()].find((s) => s.paj_order_id === id)),
   forAccount: (accountId: string, limit = 50) =>
-    all<Swap>("SELECT * FROM swaps WHERE account_id = ? ORDER BY created_at DESC LIMIT ?", accountId, limit),
+    [...rows.values()].filter((s) => s.account_id === accountId).sort(newestFirst).slice(0, limit).map((s) => ({ ...s })),
   active: () =>
-    all<Swap>("SELECT * FROM swaps WHERE status IN ('awaiting_deposit','swapping','paying') ORDER BY created_at"),
+    [...rows.values()]
+      .filter((s) => ACTIVE.includes(s.status))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at))
+      .map((s) => ({ ...s })),
   insert: (s: Omit<Swap, "created_at" | "updated_at">) => {
-    const keys = Object.keys(s) as (keyof typeof s)[];
-    run(
-      `INSERT INTO swaps (${keys.join(",")}) VALUES (${keys.map(() => "?").join(",")})`,
-      ...keys.map((k) => s[k] as Param),
-    );
+    if (rows.has(s.id)) throw new Error(`Duplicate swap ${s.id}`);
+    const t = now();
+    rows.set(s.id, { ...s, created_at: t, updated_at: t });
+    persist();
   },
   update: (id: string, patch: Partial<Swap>) => {
-    const keys = Object.keys(patch) as (keyof Swap)[];
-    if (!keys.length) return;
-    run(
-      `UPDATE swaps SET ${keys.map((k) => `${k} = ?`).join(", ")}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`,
-      ...keys.map((k) => patch[k] as Param),
-      id,
-    );
+    const s = rows.get(id);
+    if (!s || Object.keys(patch).length === 0) return;
+    rows.set(id, { ...s, ...patch, id, updated_at: now() });
+    persist();
   },
-};
-
-export const webhooks = {
-  /** Returns true the first time an event id is seen. */
-  firstSeen: (eventId: string) =>
-    Number(run("INSERT OR IGNORE INTO webhook_events (event_id) VALUES (?)", eventId).changes) > 0,
 };

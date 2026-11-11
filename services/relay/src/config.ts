@@ -1,4 +1,18 @@
+import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
+
+/**
+ * Load `.env` from the working directory. Variables already set in the
+ * environment win, so a deployment can override any of them.
+ */
+if (existsSync(".env")) {
+  for (const line of readFileSync(".env", "utf8").split("\n")) {
+    const m = line.match(/^\s*([A-Z0-9_]+)\s*=\s*(.*?)\s*$/);
+    if (!m || line.trimStart().startsWith("#")) continue;
+    const value = m[2].replace(/^(['"])(.*)\1$/, "$2");
+    if (process.env[m[1]] === undefined) process.env[m[1]] = value;
+  }
+}
 
 const bool = z
   .string()
@@ -30,7 +44,7 @@ const schema = z.object({
   PUBLIC_URL: z.string().url().optional(),
 
   PORT: z.coerce.number().int().default(8787),
-  DB_PATH: z.string().default("./paya.db"),
+  DB_PATH: z.string().default("./paya-data.json"),
   POLL_MS: z.coerce.number().int().min(2000).default(5000),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 });
