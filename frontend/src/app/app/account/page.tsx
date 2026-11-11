@@ -1,7 +1,7 @@
 "use client";
 
 import { useId, useState, type FormEvent } from "react";
-import { BadgeCheck, Send } from "lucide-react";
+import { BadgeCheck, ExternalLink, MessageSquare, Send } from "lucide-react";
 import { Topbar } from "@/components/app/topbar";
 import { Amount, EmptyState, PageTitle } from "@/components/app/ui";
 import { useAccount } from "@/components/app/account-provider";
@@ -12,6 +12,7 @@ import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { api } from "@/lib/api";
 import { maskAccount } from "@/lib/recipients";
 import { cn } from "@/lib/utils";
+import { SUPPORT_URL } from "@/lib/links";
 import { usePersistentState } from "@/lib/persist";
 
 export default function AccountPage() {
@@ -153,6 +154,18 @@ export default function AccountPage() {
             )}
 
             <SendNear max={Math.max(0, Math.floor((me.balance - 0.005) * 1e4) / 1e4)} />
+
+            <a
+              href={SUPPORT_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="focus-ring glass-card flex min-h-12 items-center justify-between gap-3 rounded-2xl px-5 text-sm font-medium"
+            >
+              <span className="inline-flex items-center gap-2">
+                <MessageSquare className="size-4" aria-hidden="true" /> Help & feedback on Telegram
+              </span>
+              <ExternalLink className="size-4 text-muted-foreground" aria-hidden="true" />
+            </a>
 
             <button
               type="button"

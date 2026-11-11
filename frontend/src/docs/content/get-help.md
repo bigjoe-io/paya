@@ -12,7 +12,7 @@ Check [Troubleshooting](/docs/troubleshooting); most questions are answered ther
 
 ## Contact support
 
-Use **Give feedback** in the app's sidebar to reach the team.
+Join the official **Paya Telegram**: [t.me/+6bF2vlPxU_kwMzk0](https://t.me/+6bF2vlPxU_kwMzk0). In the app it's **Give feedback** in the sidebar, or **Account → Help & feedback on Telegram** on your phone.
 
 ## Include these
 
@@ -24,4 +24,4 @@ Use **Give feedback** in the app's sidebar to reach the team.
 With the Support ID we can see every step of the order and exactly where the money is.
 
 > [!WARNING]
-> Support will never ask for your sign-in code, bank PIN or passwords, and never asks you to send money to fix a problem.
+> Support will never ask for your sign-in code, bank PIN or passwords, and never asks you to send money to fix a problem. Our team won't message you first on Telegram: be careful with anyone who does.

@@ -20,4 +20,4 @@ tags: how-it-works
 
 ## Want early access?
 
-Tell us what you'd build through **Give feedback** in the app. Early partners help shape the API.
+Tell us what you'd build in the official [Paya Telegram](https://t.me/+6bF2vlPxU_kwMzk0). Early partners help shape the API.

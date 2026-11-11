@@ -9,6 +9,7 @@ import { shortAddress, useAccount } from "@/components/app/account-provider";
 import { useSession } from "@/components/app/session-provider";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { cn } from "@/lib/utils";
+import { SUPPORT_URL } from "@/lib/links";
 
 const main = [{ href: "/app", label: "Swap", icon: ArrowLeftRight }];
 const markets = [{ href: "/app/earn", label: "Earn", icon: TrendingUp, soon: true }];
@@ -40,7 +41,9 @@ export function Sidebar() {
       </nav>
 
       <a
-        href="https://github.com/letsdap/paya/issues"
+        href={SUPPORT_URL}
+        target="_blank"
+        rel="noopener noreferrer"
         className="focus-ring flex min-h-11 items-center gap-3 rounded-xl px-3 text-sm text-foreground transition-colors duration-100 hover:bg-panel/70"
       >
         <MessageSquare className="size-4" aria-hidden="true" />

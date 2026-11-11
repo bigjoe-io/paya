@@ -42,13 +42,13 @@ export function Topbar({ title, backHref }: { title?: string; backHref?: string 
         >
           {hidden ? <EyeOff className="size-5" aria-hidden="true" /> : <Eye className="size-5" aria-hidden="true" />}
         </button>
-        <a
-          href="https://github.com/letsdap/paya#readme"
-          aria-label="Help"
+        <Link
+          href="/docs"
+          aria-label="Help and docs"
           className="focus-ring flex size-10 items-center justify-center rounded-full text-muted-foreground transition-colors duration-100 hover:bg-panel/70 hover:text-foreground"
         >
           <HelpCircle className="size-5" aria-hidden="true" />
-        </a>
+        </Link>
         {/* Phones have no sidebar, so the account button lives here. */}
         <div className="lg:hidden">
           {signedIn ? (
