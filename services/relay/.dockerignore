@@ -4,3 +4,4 @@ paya-data.json
 paya-data.json.tmp
 *.db
 *.db-*
+paya-audit.jsonl

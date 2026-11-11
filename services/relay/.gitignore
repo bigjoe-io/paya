@@ -4,3 +4,4 @@ node_modules/
 *.db-*
 paya-data.json
 paya-data.json.tmp
+paya-audit.jsonl

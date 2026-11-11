@@ -8,18 +8,26 @@ import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { preview } from "./quote.js";
 import { applyPayout, createSwap, recordDeposit } from "./swaps.js";
+import { admin } from "./admin.js";
+import { audit, last4 } from "./audit.js";
 
 export const app = new Hono();
 
+/** Which email a PAJ session belongs to, for the audit log (memory only; never persisted). */
+const sessionEmail = new Map<string, string>();
+const actorOf = (c: Context) => {
+  const t = (c.req.header("authorization") ?? "").replace(/^Bearer /, "");
+  return (t && sessionEmail.get(t)) || undefined;
+};
+
 // Listed origins always; any localhost port while orders are simulated.
 const LOCALHOST = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
-app.use(
-  "*",
-  cors({
+const publicCors = cors({
     origin: (origin) => (config.corsOrigins.includes(origin) || (config.demo && LOCALHOST.test(origin)) ? origin : null),
     allowHeaders: ["Content-Type", "Authorization"],
-  }),
-);
+});
+// No CORS on /admin: it's server-to-server only, so browsers can never read it.
+app.use("*", (c, next) => (c.req.path.startsWith("/admin") ? next() : publicCors(c, next)));
 
 app.onError((e, c) => {
   if (e instanceof z.ZodError) {
@@ -84,6 +92,7 @@ const email = z.string().email().max(200).transform((s) => s.trim().toLowerCase(
 app.post("/auth/start", async (c) => {
   const b = z.object({ email }).parse(await c.req.json());
   await paj.startSession(b.email);
+  audit("sign_in_code_sent", b.email);
   return c.json({ sent: true, email: b.email });
 });
 
@@ -91,7 +100,15 @@ app.post("/auth/verify", async (c) => {
   const b = z
     .object({ email, otp: z.string().regex(/^\d{4,8}$/, "Enter the code from the email"), deviceId: z.string().min(8).max(100) })
     .parse(await c.req.json());
-  const v = await paj.verifySession(b.email, b.otp, b.deviceId);
+  let v;
+  try {
+    v = await paj.verifySession(b.email, b.otp, b.deviceId);
+  } catch (e) {
+    audit("sign_in_failed", b.email, { error: (e as Error).message });
+    throw e;
+  }
+  sessionEmail.set(v.token, b.email);
+  audit("signed_in", b.email, { device: b.deviceId.slice(0, 8), expiresAt: v.expiresAt });
   log("auth", `session for ${b.email} until ${v.expiresAt}`);
   return c.json({ token: v.token, expiresAt: v.expiresAt, email: b.email });
 });
@@ -118,14 +135,18 @@ app.get("/bank-accounts", async (c) => c.json(await paj.savedAccounts(session(c,
 
 app.post("/bank-accounts", async (c) => {
   const b = z.object({ bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) }).parse(await c.req.json());
-  return c.json(await paj.saveAccount(session(c, true), b.bankId, b.accountNumber));
+  const saved = await paj.saveAccount(session(c, true), b.bankId, b.accountNumber);
+  audit("bank_account_saved", actorOf(c), { bankId: b.bankId, account: last4(b.accountNumber), name: saved.accountName });
+  return c.json(saved);
 });
 
 app.post("/kyc", async (c) => {
   const b = z
     .object({ idType: z.enum(["BVN", "NIN"]), idNumber: z.string().regex(/^\d{11}$/, "11 digits"), country: z.string().length(2) })
     .parse(await c.req.json());
-  return c.json(await paj.submitKyc(session(c, true), b.idType, b.idNumber, b.country));
+  const r = await paj.submitKyc(session(c, true), b.idType, b.idNumber, b.country);
+  audit("kyc_submitted", actorOf(c), { idType: b.idType, country: b.country }); // never the ID number
+  return c.json(r);
 });
 
 /* ---------- swaps ---------- */
@@ -142,7 +163,23 @@ app.post("/swaps", async (c) => {
       accountName: z.string().min(2).max(120),
     })
     .parse(await c.req.json());
-  const { swap, deposit } = await createSwap(b, session(c, true));
+  let created;
+  try {
+    created = await createSwap(b, session(c, true));
+  } catch (e) {
+    // The user tried and was refused before any record existed: keep it for support.
+    audit("swap_rejected", actorOf(c) ?? b.accountId, {
+      wallet: b.accountId,
+      near: b.near,
+      currency: b.currency,
+      bank: b.bankName,
+      account: last4(b.accountNumber),
+      error: (e as Error).message,
+    });
+    throw e;
+  }
+  const { swap, deposit } = created;
+  audit("swap_created", actorOf(c) ?? b.accountId, { swapId: swap.id, wallet: b.accountId, near: b.near, currency: b.currency, simulated: Boolean(swap.demo) });
   return c.json({
     swap: publicSwap(swap),
     transaction: deposit ? wrapAndSend(deposit.depositAddress, deposit.amountYocto) : null,
@@ -160,6 +197,10 @@ app.get("/swaps/:id", (c) => {
 });
 
 app.get("/swaps", (c) => c.json(swaps.forAccount(accountId.parse(c.req.query("account"))).map(publicSwap)));
+
+/* ---------- admin (server-to-server, token-protected) ---------- */
+
+app.route("/admin", admin);
 
 /* ---------- PAJ webhook ---------- */
 

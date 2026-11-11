@@ -71,6 +71,7 @@ export async function createSwap(p: NewSwap, pajToken: string) {
       status: "awaiting_deposit",
       demo: 1,
     });
+    swaps.event(id, "created", { simulated: true, near: p.near, usdc, fiat: Math.floor(v.fiatAmount), currency: p.currency });
     log("swap", `${id} SIMULATED ${p.near} NEAR → ${usdc} USDC → ${Math.floor(v.fiatAmount)} ${p.currency}`);
     return { swap: swaps.byId(id)!, deposit: null };
   }
@@ -105,6 +106,17 @@ export async function createSwap(p: NewSwap, pajToken: string) {
     status: "awaiting_deposit",
     demo: 0,
   });
+  swaps.event(id, "created", {
+    near: p.near,
+    amountInYocto: q.amountIn,
+    usdc: order.amount,
+    fiat: order.fiatAmount,
+    currency: p.currency,
+    rate: order.rate,
+    pajOrderId: order.id,
+    pajDepositAddress: order.address,
+    intentsDepositAddress: q.depositAddress,
+  });
   log("swap", `${id} PAJ ${order.id}: ${Number(q.amountIn) / 1e24} NEAR → ${order.amount} USDC → ${order.fiatAmount} ${p.currency}`);
   return { swap: swaps.byId(id)!, deposit: { depositAddress: q.depositAddress, amountYocto: q.amountIn } };
 }
@@ -115,6 +127,7 @@ export async function recordDeposit(id: string, txHash: string) {
   if (!s) throw new Error("Unknown swap");
   if (s.status !== "awaiting_deposit") return s;
   swaps.update(id, { deposit_tx: txHash, status: "swapping" });
+  swaps.event(id, "wallet_sent", { txHash });
   if (!s.demo && s.deposit_address) await oneclick.submitDeposit(s.deposit_address, txHash);
   log("swap", `${id} deposit ${txHash}`);
   return swaps.byId(id)!;
@@ -133,6 +146,7 @@ export function startWatcher() {
           await (s.demo ? advanceDemo(s) : advance(s));
         } catch (e) {
           warn("watcher", `${s.id}: ${(e as Error).message}`);
+          if ((e as Error).message !== s.error) swaps.event(s.id, "error", { message: (e as Error).message });
           swaps.update(s.id, { error: (e as Error).message });
         }
       }
@@ -151,7 +165,10 @@ async function advance(s: Swap) {
   }
   if (s.status === "swapping" && s.deposit_address) {
     const st = await oneclick.status(s.deposit_address);
-    if (st !== s.swap_status) swaps.update(s.id, { swap_status: st });
+    if (st !== s.swap_status) {
+      swaps.update(s.id, { swap_status: st });
+      swaps.event(s.id, "swap_status", { status: st });
+    }
     if (st === "SUCCESS") set(s, "paying");
     else if (st === "REFUNDED") set(s, "refunded", { error: "The swap couldn't complete; your NEAR was returned to your wallet" });
     else if (st === "FAILED" || st === "INCOMPLETE_DEPOSIT") set(s, "failed", { error: `Swap ${st.toLowerCase()}` });
@@ -165,7 +182,10 @@ async function advance(s: Swap) {
 
 /** Shared by polling and webhooks. INIT → PAID (USDC received) → COMPLETED (bank paid). */
 export function applyPayout(s: Swap, status: PajStatus, reference?: string) {
-  if (status !== s.payout_status) swaps.update(s.id, { payout_status: status });
+  if (status !== s.payout_status) {
+    swaps.update(s.id, { payout_status: status });
+    swaps.event(s.id, "payout_status", { status, ...(reference ? { reference } : {}) });
+  }
   if (status === "COMPLETED") set(s, "paid", { paj_token: null, ...(reference ? { payment_reference: reference } : {}) });
 }
 
@@ -181,6 +201,7 @@ async function advanceDemo(s: Swap) {
 function set(s: Swap, status: SwapStatus, extra: Partial<Swap> = {}) {
   if (s.status === status) return;
   swaps.update(s.id, { status, ...extra });
+  swaps.event(s.id, "status", { from: s.status, to: status, ...(extra.error ? { error: extra.error } : {}) });
   s.status = status;
   log("swap", `${s.id} → ${status}`);
 }

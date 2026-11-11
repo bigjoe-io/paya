@@ -43,7 +43,11 @@ export type Swap = {
   error: string | null;
   created_at: string;
   updated_at: string;
+  /** Append-only timeline for support and disputes. */
+  events?: SwapEvent[];
 };
+
+export type SwapEvent = { at: string; type: string; detail?: Record<string, unknown> };
 
 const FILE = config.DB_PATH;
 const ACTIVE: SwapStatus[] = ["awaiting_deposit", "swapping", "paying"];
@@ -86,6 +90,14 @@ export const swaps = {
     rows.set(s.id, { ...s, created_at: t, updated_at: t });
     persist();
   },
+  /** Record what happened to a swap, in order. Never edited, only appended. */
+  event: (id: string, type: string, detail?: Record<string, unknown>) => {
+    const s = rows.get(id);
+    if (!s) return;
+    s.events = [...(s.events ?? []), { at: now(), type, ...(detail ? { detail } : {}) }];
+    persist();
+  },
+  all: () => [...rows.values()].sort(newestFirst).map((s) => ({ ...s })),
   update: (id: string, patch: Partial<Swap>) => {
     const s = rows.get(id);
     if (!s || Object.keys(patch).length === 0) return;

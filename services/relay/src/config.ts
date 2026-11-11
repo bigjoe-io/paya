@@ -43,6 +43,12 @@ const schema = z.object({
   /** Public https URL of this relay, for PAJ webhooks. Optional: the relay also polls. */
   PUBLIC_URL: z.string().url().optional(),
 
+  /**
+   * Shared secret for the admin API (/admin/*), used server-to-server by the
+   * admin app. Unset = admin API disabled. Generate with: openssl rand -hex 32
+   */
+  ADMIN_TOKEN: z.string().min(32, "ADMIN_TOKEN must be at least 32 characters").optional(),
+
   PORT: z.coerce.number().int().default(8787),
   DB_PATH: z.string().default("./paya-data.json"),
   POLL_MS: z.coerce.number().int().min(2000).default(5000),
