@@ -8,6 +8,8 @@
 >
 > The code works for everyone and doesn't expire. Paya is live with real money: buying or cashing out moves real funds.
 
+![Paya app: buy NEAR with naira by bank transfer](docs/app-screenshot.png)
+
 Move money between NEAR and your bank, both ways. Sign in with your email, get your own NEAR address, buy NEAR with a bank transfer, and cash NEAR out to your bank account — by hand or automatically.
 
 Built for the [NEAR Hackathon](https://nearhackathon.com) — Track 08, Real-World Money.
