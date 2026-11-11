@@ -276,7 +276,7 @@ async function advance(b: Buy) {
       buys.update(b.id, { swap_status: st });
       buys.event(b.id, "swap_status", { status: st });
     }
-    if (st === "SUCCESS") set(b, "delivered", { paj_token: null });
+    if (st === "SUCCESS") set(b, "delivered", { paj_token: null, error: null });
     else if (st === "REFUNDED") set(b, "refunded", { error: "The swap couldn't complete; the USDC is in your NEAR Intents balance", paj_token: null });
     else if (st === "FAILED") set(b, "failed", { error: "Swap failed", paj_token: null });
     else if (st === "INCOMPLETE_DEPOSIT" && b.error !== SHORT_DEPOSIT) {
