@@ -32,22 +32,20 @@ With `LIVE_ORDERS=false` (the default) everything is real except the money movem
 ## Pricing
 
 ```
-gross  = USDC received × USDC→NGN (CoinGecko, 60 s cache; open.er-api fallback)
-rail   = bank payout fee, quoted live by the rail
-margin = gross × MARGIN_BPS / 10 000          (default 50 bps = 0.5 %)
-net    = floor(gross − rail − margin)         ← what lands in the bank
+NEAR ──1Click──▶ USDC on Solana     0.25 % platform fee + solver spread + ≈0.22 USDC Solana withdrawal fee
+USDC ──PAJ──▶ local currency        PAJ's live off-ramp rate (₦1,383/USD at the time of writing)
+Paya fee                            FEE_PERCENT of the USDC (default 0.5 %), charged through PAJ
 ```
 
-The swap leg (1Click platform fee + solver spread, ~0.3 %) is already inside "USDC received".
+The quote on the swap card shows each line. 1Click adds a ~1 % buffer on the NEAR side to guarantee delivery; anything unused is refunded to the user's wallet.
 
 ## Status
 
 - [x] Landing page
-- [x] Dashboard (email sign-in, Paya address, bank setup, live rate, order tracking)
-- [x] Factory + deposit contracts (unit-tested, deployed on testnet)
-- [x] Relay: detection → 1Click → pricing → payout → webhooks, with simulation modes
-- [x] End-to-end on testnet
-- [ ] Privy login (needs app id)
-- [ ] Mainnet deployment + live rail keys
-- [ ] Bridge-only mode (NEAR → Solana to the user's own wallet)
-- [ ] Staking (preview UI only)
+- [x] Swap app: wallet connect, email verification, live quote, recipients with verified names, progress tracking
+- [x] Relay: PAJ off-ramp + 1Click exact-output, tracking, safety switch
+- [x] Countries: Nigeria, Ghana, Kenya, Tanzania, South Africa (PAJ corridors)
+- [ ] First live cash-out (`LIVE_ORDERS=true`, small amount)
+- [ ] Bridge to Solana (tab marked Soon)
+- [ ] Buy / on-ramp (tab marked Soon)
+- [ ] Earn (preview UI only)
