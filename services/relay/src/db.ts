@@ -77,6 +77,11 @@ CREATE TABLE IF NOT EXISTS orders (
 );
 CREATE INDEX IF NOT EXISTS orders_user ON orders(user_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS orders_status ON orders(status);
+CREATE TABLE IF NOT EXISTS pending_keys (
+  user_id TEXT PRIMARY KEY,
+  account_id TEXT NOT NULL,
+  secret_key TEXT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS webhook_events (
   event_id TEXT PRIMARY KEY,
   event_type TEXT NOT NULL,
@@ -146,6 +151,21 @@ export const orders = {
     const values = keys.map((k) => patch[k] as Param);
     run(`UPDATE orders SET ${sets}, updated_at = strftime('%Y-%m-%dT%H:%M:%fZ','now') WHERE id = ?`, ...values, id);
   },
+};
+
+/**
+ * The key for a hex address lives here only between "generated" and
+ * "deleted on-chain" (a few seconds), so a crash mid-setup can resume.
+ */
+export const pendingKeys = {
+  get: (userId: string) =>
+    get<{ user_id: string; account_id: string; secret_key: string }>(
+      "SELECT * FROM pending_keys WHERE user_id = ?",
+      userId,
+    ),
+  put: (userId: string, accountId: string, secretKey: string) =>
+    run("INSERT OR REPLACE INTO pending_keys (user_id, account_id, secret_key) VALUES (?, ?, ?)", userId, accountId, secretKey),
+  clear: (userId: string) => run("DELETE FROM pending_keys WHERE user_id = ?", userId),
 };
 
 export const webhooks = {

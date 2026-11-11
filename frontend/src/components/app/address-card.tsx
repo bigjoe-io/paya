@@ -1,7 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy } from "lucide-react";
+import { Check, Copy, ExternalLink } from "lucide-react";
+
+/** First 16 characters + "…"; short named accounts are shown as-is. */
+const short = (s: string) => (s.length > 20 ? `${s.slice(0, 16)}…` : s);
 import { NearIcon } from "@/components/landing/icons";
 import { useSession } from "@/components/app/session-provider";
 
@@ -30,18 +33,34 @@ export function AddressCard() {
       </div>
       {address ? (
         <>
-          <div className="mt-2 flex flex-wrap items-center gap-3">
-            <p className="font-mono text-2xl font-medium tracking-tight tabular-nums break-all select-all md:text-3xl">
-              {address}
-            </p>
-            <button
-              type="button"
-              onClick={copy}
-              className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90"
+          <div className="mt-3 flex flex-col gap-4 sm:flex-row sm:items-center">
+            {/* 64-hex implicit address, shortened for display; Copy gives the full string */}
+            <p
+              className="min-w-0 flex-1 font-mono text-2xl font-medium tracking-tight tabular-nums md:text-3xl"
+              title={address}
+              aria-label={`Paya address ${address}`}
             >
-              {copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
-              {copied ? "Copied" : "Copy"}
-            </button>
+              {short(address)}
+            </p>
+            <div className="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onClick={copy}
+                className="focus-ring inline-flex min-h-10 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90"
+              >
+                {copied ? <Check className="size-4" aria-hidden="true" /> : <Copy className="size-4" aria-hidden="true" />}
+                {copied ? "Copied" : "Copy address"}
+              </button>
+              <a
+                href={`${me?.network === "mainnet" ? "https://nearblocks.io" : "https://testnet.nearblocks.io"}/address/${address}`}
+                target="_blank"
+                rel="noreferrer"
+                className="focus-ring inline-flex min-h-10 items-center gap-1.5 rounded-full px-3 text-sm text-muted-foreground transition-colors duration-100 hover:text-foreground"
+              >
+                Explorer
+                <ExternalLink className="size-3.5" aria-hidden="true" />
+              </a>
+            </div>
           </div>
           <p className="mt-3 max-w-xl text-sm text-muted-foreground text-pretty">
             Send NEAR to this address from any wallet or exchange. The moment it lands, Paya swaps it and pays naira

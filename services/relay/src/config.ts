@@ -6,6 +6,8 @@ const schema = z.object({
   FACTORY_ACCOUNT_ID: z.string().min(2),
   OPERATOR_ACCOUNT_ID: z.string().min(2),
   OPERATOR_PRIVATE_KEY: z.string().startsWith("ed25519:"),
+  /** Deposit contract deployed onto each user's hex address. */
+  DEPOSIT_WASM_PATH: z.string().default("../../contracts/factory/res/deposit.wasm"),
 
   ONECLICK_JWT: z.string().optional().default(""),
   SOLANA_USDC_RECIPIENT: z.string().optional().default(""),
@@ -39,7 +41,7 @@ export const config = {
   ...env,
   rpcUrl:
     env.NEAR_RPC_URL ??
-    (env.NEAR_NETWORK === "mainnet" ? "https://rpc.mainnet.near.org" : "https://rpc.testnet.near.org"),
+    (env.NEAR_NETWORK === "mainnet" ? "https://free.rpc.fastnear.com" : "https://test.rpc.fastnear.com"),
   /** 1Click only exists on mainnet; elsewhere the swap is simulated. */
   simulateSwap: env.NEAR_NETWORK !== "mainnet",
   /** No production API key → payouts are simulated and logged. */

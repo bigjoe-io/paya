@@ -3,7 +3,7 @@ import { cors } from "hono/cors";
 import { z } from "zod";
 import { callerEmail } from "./auth.js";
 import { config } from "./config.js";
-import { orders, users } from "./db.js";
+import { orders, pendingKeys, users } from "./db.js";
 import { fossapay } from "./fossapay.js";
 import { log } from "./log.js";
 import { near } from "./near.js";
@@ -13,7 +13,17 @@ import { onPayoutEvent } from "./watcher.js";
 
 export const app = new Hono();
 
-app.use("*", cors({ origin: config.corsOrigins, allowHeaders: ["Content-Type", "Authorization", "x-demo-email"] }));
+// Listed origins always; in demo mode also any localhost port, so running the
+// frontend on 3001/3100/etc. doesn't fail with an opaque "Failed to fetch".
+const LOCALHOST = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
+app.use(
+  "*",
+  cors({
+    origin: (origin) =>
+      config.corsOrigins.includes(origin) || (config.demoAuth && LOCALHOST.test(origin)) ? origin : null,
+    allowHeaders: ["Content-Type", "Authorization", "x-demo-email"],
+  }),
+);
 
 app.get("/health", (c) =>
   c.json({
@@ -51,10 +61,19 @@ app.post("/me", async (c) => {
     log("api", `new user ${id} <${email}>`);
   }
   if (!u.deposit_account) {
-    // Idempotent: the factory may already know this id from a previous crash.
-    let account = await near.depositAccountOf(u.id);
-    if (!account) account = await near.createDepositAccount(u.id);
-    users.setDeposit(u.id, account);
+    // A 64-hex implicit address with the deposit contract on it and no keys.
+    // Resumable: a crash mid-setup reuses the same pending key.
+    let pending = pendingKeys.get(u.id);
+    if (!pending) {
+      const fresh = near.newImplicit();
+      pendingKeys.put(u.id, fresh.accountId, fresh.secretKey);
+      pending = { user_id: u.id, account_id: fresh.accountId, secret_key: fresh.secretKey };
+    }
+    await near.lockImplicitDeposit(u.id, pending.account_id, pending.secret_key as `ed25519:${string}`);
+    await near.registerDeposit(u.id, pending.account_id);
+    users.setDeposit(u.id, pending.account_id);
+    pendingKeys.clear(u.id); // the key no longer exists on-chain; forget it here too
+    log("api", `${u.id} → ${pending.account_id}`);
     u = users.byId(u.id)!;
   }
   return c.json(publicUser(u));
@@ -65,7 +84,8 @@ app.get("/me", async (c) => {
   if (!email) return c.json({ error: "unauthenticated" }, 401);
   const u = users.byEmail(email);
   if (!u) return c.json({ error: "not found" }, 404);
-  const balance = u.deposit_account ? await near.balance(u.deposit_account) : 0n;
+  // What can actually be cashed out: balance minus the contract's storage and reserve.
+  const balance = u.deposit_account ? await near.available(u.deposit_account) : 0n;
   return c.json({ ...publicUser(u), balanceYocto: balance.toString() });
 });
 

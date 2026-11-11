@@ -127,6 +127,18 @@ impl Contract {
         }
     }
 
+    /// Record a deposit account created off-factory: an implicit (64-hex)
+    /// account that deployed the deposit contract on itself and deleted its key.
+    /// Replaces any previous mapping (e.g. migrating a named account to hex).
+    pub fn register_account(&mut self, user_id: String, account_id: AccountId) {
+        self.assert_operator_or_owner();
+        require!(is_valid_user_id(&user_id), "invalid user_id");
+        if let Some(prev) = self.accounts.insert(user_id.clone(), account_id.clone()) {
+            env::log_str(&format!("{user_id}: replaced {prev}"));
+        }
+        Event::AccountCreated(vec![AccountCreatedData { user_id, account_id }]).emit();
+    }
+
     /// Let a user reclaim funds without the operator: fix the only address
     /// their deposit account can `withdraw` to.
     pub fn set_withdraw_to(&mut self, user_id: String, withdraw_to: Option<AccountId>) -> Promise {

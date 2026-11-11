@@ -75,12 +75,15 @@ pub struct Contract {
 
 #[near]
 impl Contract {
-    /// Called by the factory in the same batch that creates the account.
+    /// Called either by the factory in the batch that creates a named
+    /// sub-account, or by the account itself when it is an implicit (hex)
+    /// account: deploy + init + delete-its-only-key in one transaction.
     #[init]
     pub fn new(factory: AccountId, operator: AccountId, user_id: String) -> Self {
+        let caller = env::predecessor_account_id();
         require!(
-            env::predecessor_account_id() == factory,
-            "Only the factory can initialise a deposit account"
+            caller == factory || caller == env::current_account_id(),
+            "Only the factory or the account itself can initialise a deposit account"
         );
         Self {
             factory,
@@ -241,6 +244,16 @@ mod tests {
         testing_env!(ctx(factory(), NearToken::from_near(1)).build());
         let c = Contract::new(factory(), accounts(1), "u1".into());
         assert_eq!(c.get_info().user_id, "u1");
+    }
+
+    #[test]
+    fn implicit_account_can_init_itself() {
+        let hex: AccountId = "a".repeat(64).parse().unwrap();
+        let mut b = VMContextBuilder::new();
+        b.current_account_id(hex.clone()).predecessor_account_id(hex).account_balance(NearToken::from_near(1));
+        testing_env!(b.build());
+        let c = Contract::new(factory(), accounts(1), "u1".into());
+        assert_eq!(c.get_info().factory, factory());
     }
 
     #[test]

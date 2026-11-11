@@ -62,7 +62,7 @@ export function OrderList({ limit }: { limit?: number }) {
         title="No cash-outs yet"
         body={
           me?.bank
-            ? `Send NEAR to ${me.depositAccount ?? "your Paya address"} and it will show up here within seconds.`
+            ? `Send NEAR to ${me.depositAccount ? (me.depositAccount.length > 20 ? me.depositAccount.slice(0, 16) + "…" : me.depositAccount) : "your Paya address"} and it will show up here within seconds.`
             : "Add your bank account first, then send NEAR to your Paya address."
         }
       />

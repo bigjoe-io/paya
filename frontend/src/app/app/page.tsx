@@ -24,7 +24,7 @@ export default function HomePage() {
             <h1 className="text-2xl font-semibold tracking-tight">Cash out</h1>
             <p className="mt-1 text-sm text-muted-foreground">NEAR in, naira out. Automatically.</p>
           </div>
-          {pending > 0.06 && (
+          {pending > 0.001 && (
             <p className="text-sm text-muted-foreground">
               Waiting in your address: <Amount className="text-foreground">{pending.toFixed(4)} NEAR</Amount>
             </p>
