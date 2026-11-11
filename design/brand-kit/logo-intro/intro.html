@@ -14,6 +14,9 @@
   #word { display: flex; font-size: 22vmin; font-weight: 600; letter-spacing: -0.05em; line-height: 1; overflow: hidden; padding: 0 0.02em 0.18em; margin-bottom: -0.18em; }
   #word span { display: inline-block; will-change: transform, opacity; }
   #tag { position: absolute; left: 0; right: 0; bottom: 18vh; text-align: center; font-size: 3.4vmin; font-weight: 500; letter-spacing: -0.01em; }
+  /* faint money glitter in the background */
+  #glitter { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+  #glitter span { position: absolute; font-weight: 600; letter-spacing: -0.02em; white-space: nowrap; will-change: transform, opacity; }
   #flash { position: absolute; inset: 0; background: #fff; pointer-events: none; }
   /* square and portrait: smaller lockup so it keeps comfortable margins */
   @media (max-aspect-ratio: 4/3) {
@@ -25,6 +28,7 @@
 </style>
 </head>
 <body>
+<div id="glitter"></div>
 <div id="stage">
   <div id="lockup">
     <svg id="mark" viewBox="0 0 100 100">
@@ -52,6 +56,43 @@ const $ = (id) => document.getElementById(id);
 const body = document.body, lockup = $("lockup"), mark = $("mark"), full = $("full"), half = $("half");
 const letters = [...document.querySelectorAll("#word span")], word = $("word"), tag = $("tag"), flash = $("flash");
 
+/* ---- background glitter: currency symbols and country codes, barely there ---- */
+const GLYPHS = ["₦", "$", "GH₵", "KSh", "R", "TSh", "NG", "GH", "KE", "TZ", "ZA", "US", "₦", "$", "₦"];
+let seed = 7;
+const rand = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+const glitterEl = document.getElementById("glitter");
+const bits = Array.from({ length: 46 }, (_, i) => {
+  const el = document.createElement("span");
+  el.textContent = GLYPHS[i % GLYPHS.length];
+  glitterEl.appendChild(el);
+  return {
+    el,
+    x: rand() * 100, y: rand() * 100,                 // % of the frame
+    size: 1.6 + rand() * 3.4,                          // vmin
+    phase: rand() * Math.PI * 2, speed: 2 + rand() * 4, // twinkle
+    drift: (rand() - 0.5) * 3, rise: 1 + rand() * 2.5,  // vmin per second
+    peak: 0.04 + rand() * 0.08,                         // max opacity
+    rot: (rand() - 0.5) * 30,
+  };
+});
+// keep the middle clear so the logo always reads
+// keep the logo and tagline area clear so they always read
+for (const b of bits) if (Math.abs(b.x - 50) < 26 && b.y > 34 && b.y < 86) b.y = b.y < 58 ? b.y - 22 : Math.min(98, b.y + 16);
+
+function renderGlitter(t, fg) {
+  // fades in with the first pop, dips during the dive, returns on white
+  const presence = Math.min(seg(t, 0.1, 0.8), 1 - 0.85 * seg(t, 1.05, 1.42) + 0.85 * seg(t, 1.6, 2.2));
+  for (const b of bits) {
+    const tw = Math.pow(Math.max(0, Math.sin(b.phase + t * b.speed)), 3); // sparkle, mostly off
+    b.el.style.opacity = (b.peak * (0.25 + 0.75 * tw) * presence).toFixed(3);
+    b.el.style.color = fg;
+    b.el.style.fontSize = b.size + "vmin";
+    b.el.style.left = b.x + "%";
+    b.el.style.top = b.y + "%";
+    b.el.style.transform = `translate(${b.drift * t}vmin, ${-b.rise * t}vmin) rotate(${b.rot}deg) scale(${0.9 + 0.2 * tw})`;
+  }
+}
+
 function render(t) {
   // Act 1 (0–1.45s): white on black. Act 2 (1.45s→): black on white.
   const inverted = t >= 1.45;
@@ -59,6 +100,7 @@ function render(t) {
   body.style.background = inverted ? "#fff" : "#000";
   full.style.fill = half.style.fill = fg;
   word.style.color = tag.style.color = fg;
+  renderGlitter(t, fg);
 
   // the word sits beside the mark; until it reveals, keep the mark centred
   const wordW = word.getBoundingClientRect().width;
@@ -120,6 +162,7 @@ function render(t) {
 }
 
 window.render = render;
+window.renderGlitter = renderGlitter;
 window.DURATION = DURATION;
 // Live preview when opened directly in a browser.
 if (!location.search.includes("export")) {
