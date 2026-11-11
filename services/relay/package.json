@@ -12,9 +12,7 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.14.0",
-    "@privy-io/server-auth": "^1.18.0",
     "hono": "^4.7.0",
-    "near-api-js": "^7.4.0",
     "zod": "^3.24.0"
   },
   "devDependencies": {

@@ -3,7 +3,7 @@
 import { useId, useState } from "react";
 import { AlertTriangle } from "lucide-react";
 import { AssetIcon, Card } from "@/components/app/ui";
-import { useWallet } from "@/components/app/session-provider";
+import { useWallet } from "@/components/app/wallet-provider";
 import { assets, formatUsd, type EarnProduct } from "@/lib/mock";
 import { cn } from "@/lib/utils";
 

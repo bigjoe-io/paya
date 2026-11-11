@@ -1,63 +1,51 @@
 # Paya relay
 
-The service that turns a NEAR deposit into naira in a bank account, with no action from the user.
+Prices and tracks "NEAR → bank account" cash-outs. It never holds user funds: the user's wallet signs the only transaction that moves money.
 
 ```
-<user>.paya.near receives NEAR
-      │  watcher sees balance ≥ MIN_CASHOUT_NEAR
+user's NEAR wallet ──(wrap + ft_transfer, one signature)──▶ NEAR Intents deposit address
+      │  1Click EXACT_OUTPUT: delivers exactly the USDC PAJ asked for, on Solana
       ▼
-order created ── 1Click quote (NEAR → USDC on Solana, recipient = rail's Solana wallet)
-      │  operator calls forward_all on the deposit account (on-chain, logged as an event)
-      ▼
-swapping ── poll 1Click until SUCCESS → amountOut USDC
-      │  naira = USDC × live rate − rail payout fee − Paya margin
-      ▼
-paying ── rail payout to the user's verified bank account (idempotent reference)
-      │  webhook or poll → completed
-      ▼
-paid
+PAJ deposit address (Solana USDC) ──▶ PAJ pays the bank account ──▶ COMPLETED
 ```
+
+1. **Quote** — dry 1Click quote (NEAR → USDC on Solana) + PAJ rate (public NGN rate before sign-in, the user's own `offramp-value` after).
+2. **Sign-in** — email OTP with PAJ (`/auth/start`, `/auth/verify`). The relay holds Paya's business key; the user's session token comes back to the browser and is sent as `Authorization: Bearer`.
+3. **Swap** — PAJ off-ramp order for A USDC (+ Paya's fee via `businessUSDCFee`) → PAJ deposit address + exact amount T → 1Click EXACT_OUTPUT for T USDC to that address → the wallet transaction (wrap NEAR, send wNEAR to the Intents deposit address). Unused NEAR from 1Click's slippage buffer is refunded to the user's wallet.
+4. **Track** — 1Click status until `SUCCESS`, then PAJ transaction `INIT → PAID → COMPLETED`.
 
 ## Run
 
 ```bash
-cp .env.example .env   # fill in the factory, operator key, and (optionally) rail + Privy keys
+cp .env.example .env   # set PAJ_API_KEY
 npm install
-npm run dev
+npm run dev            # http://localhost:8787
 ```
 
-Everything that only exists on mainnet/production degrades to a clearly-labelled simulation:
-
-| Missing | What happens |
-|---|---|
-| `NEAR_NETWORK=testnet` | 1Click is simulated; NEAR is still forwarded on-chain (to the operator) so the contract path is exercised |
-| no `FOSSAPAY_API_KEY` | banks list, name enquiry, fees and payouts are simulated and logged |
-| no Privy keys | the API trusts an `x-demo-email` header from the frontend |
+`LIVE_ORDERS=false` (default): sign-in, banks, account-name lookup and quotes are real; **no PAJ order is created and the wallet is never asked to send funds** — swaps are simulated. Set `LIVE_ORDERS=true` only when you mean to move real money (mainnet NEAR, real bank payouts).
 
 ## API
 
-| Method | Path | What |
-|---|---|---|
-| GET | `/health` | mode flags |
-| GET | `/rate` | live USDC→NGN and NEAR→NGN (CoinGecko, 60s cache, open.er-api fallback) |
-| GET | `/estimate?near=25` | full cost breakdown for a given NEAR amount |
-| GET | `/banks` | Nigerian banks and codes (from the rail) |
-| POST | `/me` | create/resolve the caller's account and `<id>.paya.near` deposit address |
-| GET | `/me` | account + live deposit balance |
-| POST | `/me/bank/verify` | name enquiry preview |
-| POST | `/me/bank` | verify and save the payout bank account |
-| GET | `/me/orders` | cash-out history |
-| POST | `/webhooks/fossapay` | signed payout events (HMAC-SHA256 of `data`) |
+| Method | Path | Auth | What |
+|---|---|---|---|
+| GET | `/health` | — | `demo` flag, fee |
+| GET | `/currencies` | — | NGN, GHS, KES, TZS, ZAR |
+| GET | `/prices` | — | NEAR/USD, USD/NGN |
+| GET | `/quote?near=&currency=&account=` | optional | price breakdown |
+| POST | `/auth/start` · `/auth/verify` | — | email OTP → session token |
+| GET | `/banks?currency=` | session | banks for a country |
+| POST | `/bank-accounts/resolve` | session | real account-holder name |
+| GET/POST | `/bank-accounts` | session | saved recipients (kept by PAJ) |
+| POST | `/kyc` | session | BVN/NIN, if PAJ asks for it |
+| POST | `/swaps` | session | place a cash-out → wallet transaction |
+| POST | `/swaps/:id/deposit` | — | record the wallet's tx hash |
+| GET | `/swaps/:id`, `/swaps?account=` | — | status / history |
+| POST | `/webhooks/paj` | — | hint only; the order is re-read from PAJ |
 
-Auth: `Authorization: Bearer <privy access token>` or, in demo mode, `x-demo-email: you@example.com`.
+## Fees, per cash-out
 
-## Pricing
-
-```
-gross  = usdc_received × rate(USDC→NGN, live)
-rail   = payout fee quoted live by the rail
-margin = gross × MARGIN_BPS / 10 000
-net    = floor(gross − rail − margin)        ← what lands in the bank
-```
-
-The swap itself costs ~0.25 % (1Click platform fee without a partner key; ~0.2 % with one) plus solver spread; that is already reflected in `usdc_received`.
+| Leg | Cost |
+|---|---|
+| 1Click swap | 0.25 % platform fee (≈0.2 % with a partner JWT) + solver spread, and a fixed ≈0.22 USDC Solana withdrawal fee |
+| PAJ | its spread is inside the rate it quotes |
+| Paya | `FEE_PERCENT` of the USDC (default 0.5 %), charged through PAJ |

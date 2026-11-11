@@ -1,58 +1,111 @@
 "use client";
 
-import Link from "next/link";
-import { ArrowRight } from "lucide-react";
+import { useEffect, useState } from "react";
 import { Topbar } from "@/components/app/topbar";
-import { AddressCard } from "@/components/app/address-card";
-import { BankForm } from "@/components/app/bank-form";
-import { RateCard } from "@/components/app/rate-card";
-import { OrderList } from "@/components/app/order-list";
-import { useSession } from "@/components/app/session-provider";
+import { SwapCard } from "@/components/app/swap-card";
 import { Amount } from "@/components/app/ui";
-import { yoctoToNear } from "@/lib/api";
+import { useWallet } from "@/components/app/wallet-provider";
+import { api, type Currency } from "@/lib/api";
+import { cn } from "@/lib/utils";
 
-export default function HomePage() {
-  const { me } = useSession();
-  const pending = me?.balanceYocto ? yoctoToNear(me.balanceYocto) : 0;
+const TABS = [
+  { id: "buy", label: "Buy", soon: true },
+  { id: "sell", label: "Sell", soon: false },
+  { id: "bridge", label: "Bridge", soon: true },
+];
+
+export default function SwapPage() {
+  const { accountId, balance } = useWallet();
+  const [currencies, setCurrencies] = useState<Currency[] | null>(null);
+  const [prices, setPrices] = useState<{ nearUsd: number; ngnPerUsd: number | null } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([api.currencies(), api.prices()])
+      .then(([c, p]) => {
+        if (cancelled) return;
+        setCurrencies(c);
+        setPrices(p);
+      })
+      .catch((e: Error) => {
+        if (!cancelled) setError(e.message);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const usd = balance !== null && prices ? balance * prices.nearUsd : null;
 
   return (
     <>
       <Topbar />
-      <main className="mx-auto w-full max-w-4xl px-4 pb-12 lg:px-6">
-        <div className="flex flex-wrap items-end justify-between gap-4 pt-2">
-          <div>
-            <h1 className="text-2xl font-semibold tracking-tight">Cash out</h1>
-            <p className="mt-1 text-sm text-muted-foreground">NEAR in, naira out. Automatically.</p>
-          </div>
-          {pending > 0.001 && (
-            <p className="text-sm text-muted-foreground">
-              Waiting in your address: <Amount className="text-foreground">{pending.toFixed(4)} NEAR</Amount>
+      <main className="mx-auto w-full max-w-xl px-4 pb-12">
+        {/* total balance of the connected wallet */}
+        <section className="pt-2 text-center">
+          <p className="text-sm text-muted-foreground">Total balance</p>
+          {accountId ? (
+            <>
+              <p className="mt-1 text-4xl font-semibold tracking-tight">
+                <Amount>{usd === null ? "…" : `$${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`}</Amount>
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                <Amount>{balance === null ? "…" : `${balance.toFixed(4)} NEAR`}</Amount>
+                {usd !== null && prices?.ngnPerUsd ? (
+                  <>
+                    {" · "}
+                    <Amount>{`≈ ₦${Math.floor(usd * prices.ngnPerUsd).toLocaleString("en-US")}`}</Amount>
+                  </>
+                ) : null}
+              </p>
+            </>
+          ) : (
+            <p className="mt-1 text-sm text-muted-foreground">Connect a NEAR wallet to see your balance.</p>
+          )}
+        </section>
+
+        {/* Buy / Sell / Bridge */}
+        <div role="tablist" aria-label="Mode" className="mt-8 grid grid-cols-3 gap-1 rounded-2xl border border-border bg-card p-1">
+          {TABS.map((t) => (
+            <button
+              key={t.id}
+              type="button"
+              role="tab"
+              aria-selected={!t.soon}
+              aria-disabled={t.soon || undefined}
+              tabIndex={t.soon ? -1 : 0}
+              onClick={(e) => t.soon && e.preventDefault()}
+              className={cn(
+                "focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium",
+                t.soon ? "cursor-not-allowed text-muted-foreground" : "bg-panel text-foreground shadow-sm",
+              )}
+            >
+              {t.label}
+              {t.soon && (
+                <span className="rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium uppercase tracking-wide">
+                  Soon
+                </span>
+              )}
+            </button>
+          ))}
+        </div>
+
+        <div className="mt-4">
+          {error ? (
+            <p role="alert" className="glass-card rounded-3xl p-6 text-sm text-warning">
+              {error}
             </p>
+          ) : currencies ? (
+            <SwapCard currencies={currencies} />
+          ) : (
+            <div className="glass-card h-[28rem] animate-pulse rounded-3xl" aria-busy="true" aria-label="Loading" />
           )}
         </div>
 
-        <div className="mt-6 grid gap-4">
-          <AddressCard />
-          <div className="grid gap-4 md:grid-cols-2">
-            <BankForm compact />
-            <RateCard />
-          </div>
-        </div>
-
-        <section className="mt-10">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold tracking-tight">Recent cash-outs</h2>
-            <Link
-              href="/app/activity"
-              className="focus-ring inline-flex min-h-9 items-center gap-1 rounded-lg px-2 text-sm text-muted-foreground hover:text-foreground"
-            >
-              All activity <ArrowRight className="size-4" aria-hidden="true" />
-            </Link>
-          </div>
-          <div className="mt-4">
-            <OrderList limit={3} />
-          </div>
-        </section>
+        <p className="mt-4 text-center text-xs text-muted-foreground text-pretty">
+          Your NEAR goes from your wallet straight into the swap. Paya never holds your funds.
+        </p>
       </main>
     </>
   );

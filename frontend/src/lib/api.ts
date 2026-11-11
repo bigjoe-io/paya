@@ -1,120 +1,134 @@
 /**
- * Client for the Paya relay. Auth is either a Privy access token (Bearer) or,
- * in demo mode, the signed-in email in `x-demo-email`.
+ * Client for the Paya relay (services/relay). Two identities: the connected
+ * NEAR wallet (signs the only transaction that moves money) and the user's
+ * PAJ session from email sign-in (banks, name lookup, payout orders).
  */
 export const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL ?? "http://localhost:8787";
 
-export type Me = {
-  id: string;
-  email: string;
-  depositAccount: string | null;
-  bank: {
-    code: string;
-    name: string;
-    accountNumber: string;
-    /** null until a real name enquiry has run (test mode). */
-    accountName: string | null;
-    verified: boolean;
-  } | null;
-  network: "testnet" | "mainnet";
-  balanceYocto?: string;
+export type Currency = { code: string; name: string; symbol: string; flag: string; country: string };
+
+export type Bank = { id: string; code: string; name: string; logo?: string; country: string };
+export type SavedAccount = { id: string; accountName: string; accountNumber: string; bank: string };
+
+export type Quote = {
+  nearIn: number;
+  usdcOut: number;
+  usdcPayout: number;
+  feeUsdc: number;
+  feePercent: number;
+  rate: number;
+  fiatOut: number;
+  fiatPerNear: number;
+  currency: string;
+  priceSource: "account" | "public";
+  etaSeconds: number;
 };
 
-export type OrderStatus = "created" | "forwarding" | "swapping" | "paying" | "paid" | "failed" | "refunded";
+export type SwapStatus = "awaiting_deposit" | "swapping" | "paying" | "paid" | "refunded" | "expired" | "failed";
 
-export type Order = {
+export type Swap = {
   id: string;
-  status: OrderStatus;
-  nearAmount: number;
-  usdcOut: number | null;
-  rateNgn: number | null;
-  railFeeNgn: number | null;
-  marginNgn: number | null;
-  ngnAmount: number | null;
-  forwardTx: string | null;
-  payoutReference: string | null;
-  simulated: boolean;
+  status: SwapStatus;
+  demo: boolean;
+  nearIn: number;
+  currency: string;
+  fiatAmount: number;
+  rate: number;
+  usdcAmount: number;
+  feeUsdc: number;
+  recipient: { bankName: string; account: string; name: string };
+  depositTx: string | null;
+  paymentReference: string | null;
   error: string | null;
   createdAt: string;
   updatedAt: string;
 };
 
-export type Rates = {
-  ngnPerUsdc: number;
-  ngnPerNear: number;
-  usdPerNear: number;
-  source: string;
-  fetchedAt: string;
-};
-
-export type Estimate = {
-  nearAmount: number;
-  rate: Rates & { source: string };
-  usdcEstimate: number;
-  grossNgn: number;
-  railFeeNgn: number;
-  marginNgn: number;
-  netNgn: number;
-  marginBps: number;
-};
-
-export type Bank = { bankname: string; bankcode: string };
-
-export type Health = {
-  ok: boolean;
-  network: string;
-  factory: string;
-  simulateSwap: boolean;
-  simulatePayout: boolean;
-  demoAuth: boolean;
+/** The one transaction the wallet signs (all actions on wrap.near). */
+export type WalletTx = {
+  receiverId: string;
+  actions: { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }[];
 };
 
 export class ApiError extends Error {
   constructor(
     message: string,
     public status: number,
+    public code?: string,
   ) {
     super(message);
   }
 }
 
-type Auth = { email?: string | null; token?: string | null };
+/** The user's PAJ session token, attached when present. */
+let sessionToken: string | null = null;
+export const setSessionToken = (t: string | null) => {
+  sessionToken = t;
+};
 
-async function request<T>(path: string, auth: Auth, init: RequestInit = {}): Promise<T> {
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
-  if (auth.token) headers.Authorization = `Bearer ${auth.token}`;
-  else if (auth.email) headers["x-demo-email"] = auth.email;
+async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let r: Response;
   try {
-    r = await fetch(`${RELAY_URL}${path}`, { ...init, headers: { ...headers, ...(init.headers ?? {}) } });
+    r = await fetch(`${RELAY_URL}${path}`, {
+      ...init,
+      headers: {
+        "Content-Type": "application/json",
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        ...(init.headers ?? {}),
+      },
+    });
   } catch {
-    throw new ApiError(
-      `Can't reach the Paya relay at ${RELAY_URL}. Start it with "npm run dev" in services/relay.`,
-      0,
-    );
+    throw new ApiError(`Can't reach the Paya relay at ${RELAY_URL}. Start it with "npm run dev" in services/relay.`, 0);
   }
-  const body = (await r.json().catch(() => ({}))) as { error?: string } & T;
-  if (!r.ok) throw new ApiError(body.error ?? `Request failed (${r.status})`, r.status);
+  const body = (await r.json().catch(() => ({}))) as { error?: string; code?: string } & T;
+  if (!r.ok) throw new ApiError(body.error ?? `Request failed (${r.status})`, r.status, body.code);
   return body as T;
 }
 
 export const api = {
-  health: () => request<Health>("/health", {}),
-  rate: () => request<Rates>("/rate", {}),
-  estimate: (near: number) => request<Estimate>(`/estimate?near=${near}`, {}),
-  banks: () => request<Bank[]>("/banks", {}),
-  signIn: (auth: Auth) => request<Me>("/me", auth, { method: "POST" }),
-  me: (auth: Auth) => request<Me>("/me", auth),
-  verifyBank: (auth: Auth, bankCode: string, accountNumber: string) =>
-    request<{ accountName: string; verified: boolean }>("/me/bank/verify", auth, {
+  health: () => request<{ ok: boolean; demo: boolean; feePercent: number }>("/health"),
+  currencies: () => request<Currency[]>("/currencies"),
+  prices: () => request<{ nearUsd: number; ngnPerUsd: number | null }>("/prices"),
+  quote: (near: number, currency: string, account?: string | null) =>
+    request<Quote>(`/quote?near=${near}&currency=${currency}${account ? `&account=${account}` : ""}`),
+
+  startSignIn: (email: string) => request<{ sent: boolean }>("/auth/start", { method: "POST", body: JSON.stringify({ email }) }),
+  verifySignIn: (email: string, otp: string, deviceId: string) =>
+    request<{ token: string; expiresAt: string; email: string }>("/auth/verify", {
       method: "POST",
-      body: JSON.stringify({ bankCode, accountNumber }),
+      body: JSON.stringify({ email, otp, deviceId }),
     }),
-  saveBank: (auth: Auth, bankCode: string, accountNumber: string) =>
-    request<Me>("/me/bank", auth, { method: "POST", body: JSON.stringify({ bankCode, accountNumber }) }),
-  orders: (auth: Auth) => request<Order[]>("/me/orders", auth),
+
+  banks: (currency: string) => request<Bank[]>(`/banks?currency=${currency}`),
+  resolveAccount: (bankId: string, accountNumber: string) =>
+    request<{ accountName: string; accountNumber: string }>("/bank-accounts/resolve", {
+      method: "POST",
+      body: JSON.stringify({ bankId, accountNumber }),
+    }),
+  savedAccounts: () => request<SavedAccount[]>("/bank-accounts"),
+  saveAccount: (bankId: string, accountNumber: string) =>
+    request<SavedAccount>("/bank-accounts", { method: "POST", body: JSON.stringify({ bankId, accountNumber }) }),
+  submitKyc: (idType: "BVN" | "NIN", idNumber: string, country: string) =>
+    request<{ message: string }>("/kyc", { method: "POST", body: JSON.stringify({ idType, idNumber, country }) }),
+
+  createSwap: (b: {
+    accountId: string;
+    near: number;
+    currency: string;
+    bankId: string;
+    bankName: string;
+    accountNumber: string;
+    accountName: string;
+  }) => request<{ swap: Swap; transaction: WalletTx | null }>("/swaps", { method: "POST", body: JSON.stringify(b) }),
+  recordDeposit: (id: string, txHash: string) =>
+    request<Swap>(`/swaps/${id}/deposit`, { method: "POST", body: JSON.stringify({ txHash }) }),
+  swap: (id: string) => request<Swap>(`/swaps/${id}`),
+  swaps: (account: string) => request<Swap[]>(`/swaps?account=${account}`),
 };
 
-export const formatNgn = (n: number) => "₦" + new Intl.NumberFormat("en-NG", { maximumFractionDigits: 0 }).format(n);
-/** Display precision only: 24 decimal places collapse to a double. */
-export const yoctoToNear = (y: string) => Number(y) / 1e24;
+export function formatFiat(amount: number, currency: Pick<Currency, "symbol" | "code"> | string) {
+  const symbol = typeof currency === "string" ? currency : currency.symbol;
+  return `${symbol}${new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(amount)}`;
+}
+
+export const yoctoToNear = (y: string) => Number(BigInt(y) / BigInt("1000000000000000000")) / 1e6;

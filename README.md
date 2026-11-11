@@ -7,47 +7,27 @@ Built for the [NEAR Hackathon](https://nearhackathon.com) — Track 08, Real-Wor
 ## How it works
 
 ```
-you@example.com ──sign in──▶ joseph.paya.near   (a deposit account created by the Paya factory contract)
-                                   │  send NEAR here from any wallet or exchange
-                                   ▼
-relay sees the balance ──▶ 1Click quote: NEAR → USDC on Solana ──▶ contract `forward`s the NEAR (on-chain event)
-                                   │
-                                   ▼
-USDC lands in the payout rail's Solana wallet ──▶ naira = USDC × live rate − bank fee − Paya fee
-                                   │
-                                   ▼
-payout to the user's verified Nigerian bank account ──▶ paid
+connect a NEAR wallet (HOT, Meteor, Nightly, …) ──▶ type an amount ──▶ pick a bank account ──▶ Swap
+                                                                                         │ one signature
+NEAR ──NEAR Intents (1Click)──▶ USDC on Solana ──PAJ──▶ bank payout (NGN · GHS · KES · TZS · ZAR)
 ```
 
-- **Contracts** ([contracts/](contracts/)): a factory that creates one deposit account per user, and the deposit contract that only lets NEAR leave via `forward` (operator, logged) or `withdraw` (user's own escape hatch).
-- **Relay** ([services/relay/](services/relay/)): watches deposit accounts, drives NEAR Intents 1Click, prices in naira from a live rate, pays out through the rail, verifies webhooks.
-- **Frontend** ([frontend/](frontend/)): landing page and the dashboard — email sign-in, your Paya address, bank setup with name verification, live rate with the full fee breakdown, cash-out history.
+- **Frontend** ([frontend/](frontend/)): landing page and the swap app — wallet connect via NEAR Connect, email verification with the payout network, bank accounts with real account-holder names, a live quote with every fee shown, and progress until the money lands.
+- **Relay** ([services/relay/](services/relay/)): quotes, places the PAJ order and the exact-output 1Click swap, hands the wallet one transaction to sign, tracks both legs. Never holds funds.
+- **Contracts** ([contracts/](contracts/)): the earlier deposit-account design (factory + locked per-user accounts). Not used by the current wallet flow; kept for a "send NEAR from an exchange" mode.
 
-## Run it locally (testnet, simulated swap + payout)
+## Run it locally
 
 ```bash
 # 1. relay
-cd services/relay && cp .env.example .env   # set FACTORY_ACCOUNT_ID, OPERATOR_ACCOUNT_ID, OPERATOR_PRIVATE_KEY
+cd services/relay && cp .env.example .env   # set PAJ_API_KEY
 npm install && npm run dev                   # http://localhost:8787
 
 # 2. frontend
 cd frontend && npm install && npm run dev    # http://localhost:3000 → /app
 ```
 
-Sign in with any email, add a bank account (the full Nigerian bank list loads; account numbers are checked with the CBN NUBAN check digit — e.g. GTBank `0123456785` passes — and the holder's name is confirmed once the payout rail is live), then send testnet NEAR to the address shown. The order appears within seconds and walks Received → Swapping → Paying → Paid.
-
-A factory is deployed on testnet at `paya-demo-6282.testnet` (see [contracts/README.md](contracts/README.md) to deploy your own).
-
-## Going live
-
-1Click (the swap) exists only on mainnet; the payout rail is production-only. To run for real:
-
-| Need | Why |
-|---|---|
-| Mainnet NEAR account for the factory (e.g. `paya.near`) with ~10 NEAR | account creation + storage for deposit accounts; publish the deposit contract as a global contract to make each account cost < 0.01 NEAR |
-| Payout rail API key + a funded master NGN wallet + a master Solana wallet | USDC arrives in the Solana wallet; naira leaves the NGN wallet |
-| Privy app id + secret (email login) | replaces the demo `x-demo-email` header with verified tokens |
-| 1Click partner JWT (optional) | drops the swap platform fee from 0.25 % to ~0.2 % |
+With `LIVE_ORDERS=false` (the default) everything is real except the money movement: sign-in, banks, name lookup and quotes hit the live services, and swaps are simulated. Set `LIVE_ORDERS=true` in the relay to place real orders (mainnet NEAR, real payouts).
 
 ## Pricing
 

@@ -1,12 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Eye, EyeOff, HelpCircle } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, HelpCircle, Wallet } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { useSession } from "@/components/app/session-provider";
+import { useWallet } from "@/components/app/wallet-provider";
+import { shortAccount } from "@/components/app/sidebar";
 
 export function Topbar({ title, backHref }: { title?: string; backHref?: string }) {
-  const { hidden, toggleHidden, me } = useSession();
+  const { hidden, toggleHidden, accountId, ready, connecting, connect, disconnect } = useWallet();
 
   return (
     <header className="flex h-14 items-center justify-between gap-3 px-4 lg:px-6">
@@ -28,9 +29,6 @@ export function Topbar({ title, backHref }: { title?: string; backHref?: string 
       </div>
 
       <div className="flex items-center gap-1">
-        {me?.network === "testnet" && (
-          <span className="rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">Testnet</span>
-        )}
         <button
           type="button"
           onClick={toggleHidden}
@@ -47,6 +45,30 @@ export function Topbar({ title, backHref }: { title?: string; backHref?: string 
         >
           <HelpCircle className="size-5" aria-hidden="true" />
         </a>
+        {/* Phones have no sidebar, so the wallet button lives here. */}
+        <div className="lg:hidden">
+          {accountId ? (
+            <button
+              type="button"
+              onClick={() => void disconnect()}
+              title="Disconnect"
+              className="focus-ring ml-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-panel px-3 font-mono text-xs tabular-nums"
+            >
+              <span className="size-2 rounded-full bg-success" aria-hidden="true" />
+              {shortAccount(accountId)}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => void connect()}
+              disabled={!ready || connecting}
+              className="focus-ring ml-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-medium text-background disabled:opacity-60"
+            >
+              <Wallet className="size-4" aria-hidden="true" />
+              {connecting ? "Connecting…" : "Connect"}
+            </button>
+          )}
+        </div>
       </div>
     </header>
   );

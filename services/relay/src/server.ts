@@ -1,204 +1,219 @@
-import { Hono } from "hono";
+import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { z } from "zod";
-import { callerEmail } from "./auth.js";
 import { config } from "./config.js";
-import { orders, pendingKeys, users } from "./db.js";
-import { fossapay, UNVERIFIED_NAME } from "./fossapay.js";
+import { swaps, type Swap } from "./db.js";
 import { log } from "./log.js";
-import { near } from "./near.js";
-import { estimate } from "./pricing.js";
-import { getRates } from "./rate.js";
-import { onPayoutEvent } from "./watcher.js";
+import { ASSET_WNEAR } from "./oneclick.js";
+import { COUNTRY, paj, PajError } from "./paj.js";
+import { preview } from "./quote.js";
+import { applyPayout, createSwap, recordDeposit } from "./swaps.js";
 
 export const app = new Hono();
 
-// Listed origins always; in demo mode also any localhost port, so running the
-// frontend on 3001/3100/etc. doesn't fail with an opaque "Failed to fetch".
+// Listed origins always; any localhost port while orders are simulated.
 const LOCALHOST = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
 app.use(
   "*",
   cors({
-    origin: (origin) =>
-      config.corsOrigins.includes(origin) || (config.demoAuth && LOCALHOST.test(origin)) ? origin : null,
-    allowHeaders: ["Content-Type", "Authorization", "x-demo-email"],
+    origin: (origin) => (config.corsOrigins.includes(origin) || (config.demo && LOCALHOST.test(origin)) ? origin : null),
+    allowHeaders: ["Content-Type", "Authorization"],
   }),
 );
 
-app.get("/health", (c) =>
-  c.json({
-    ok: true,
-    network: config.NEAR_NETWORK,
-    factory: config.FACTORY_ACCOUNT_ID,
-    simulateSwap: config.simulateSwap,
-    simulatePayout: config.simulatePayout,
-    demoAuth: config.demoAuth,
-  }),
+app.onError((e, c) => {
+  if (e instanceof z.ZodError) {
+    const first = e.issues[0];
+    return c.json({ error: `${first.path.join(".") || "request"}: ${first.message}` }, 400);
+  }
+  if (e instanceof PajError && e.status === 401) {
+    const fresh = e.message === "Sign in first";
+    return c.json({ error: fresh ? "Sign in with your email first." : "Your session expired. Sign in again.", code: "SIGN_IN" }, 401);
+  }
+  return c.json({ error: e.message }, 400);
+});
+
+const NEAR_ACCOUNT = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+const accountId = z.string().min(2).max(64).regex(NEAR_ACCOUNT, "Not a NEAR account id");
+const currency = z
+  .string()
+  .length(3)
+  .transform((s) => s.toUpperCase())
+  .refine((s) => Boolean(COUNTRY[s]), "Unsupported currency");
+
+/** The user's PAJ session, sent by the frontend as a Bearer token. */
+function session(c: Context, required: true): string;
+function session(c: Context, required?: false): string | undefined;
+function session(c: Context, required = false) {
+  const h = c.req.header("authorization") ?? "";
+  const t = h.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
+  if (required && !t) throw new PajError("Sign in first", 401);
+  return t;
+}
+
+/* ---------- reference ---------- */
+
+app.get("/health", (c) => c.json({ ok: true, demo: config.demo, feePercent: config.FEE_PERCENT }));
+
+app.get("/currencies", (c) =>
+  c.json(Object.entries(COUNTRY).map(([code, x]) => ({ code, name: x.country, symbol: x.symbol, flag: x.flag, country: x.country }))),
 );
 
-app.get("/rate", async (c) => c.json(await getRates()));
-
-app.get("/estimate", async (c) => {
-  const near = Number(c.req.query("near") ?? "1");
-  if (!Number.isFinite(near) || near <= 0) return c.json({ error: "near must be positive" }, 400);
-  return c.json(await estimate(near));
-});
-
-app.get("/banks", async (c) => c.json(await fossapay.banks()));
-
-/* ---------- me ---------- */
-
-/** Resolve (or create) the caller's Paya account from their email. */
-app.post("/me", async (c) => {
-  const email = await callerEmail(c);
-  if (!email) return c.json({ error: "unauthenticated" }, 401);
-
-  let u = users.byEmail(email);
-  if (!u) {
-    const id = slugFor(email);
-    users.insert(id, email);
-    u = users.byId(id)!;
-    log("api", `new user ${id} <${email}>`);
+let nearPrice: { at: number; usd: number } | null = null;
+app.get("/prices", async (c) => {
+  if (!nearPrice || Date.now() - nearPrice.at > 60_000) {
+    const r = await fetch("https://1click.chaindefuser.com/v0/tokens", { signal: AbortSignal.timeout(10000) });
+    const t = (await r.json()) as { assetId: string; price: number }[];
+    nearPrice = { at: Date.now(), usd: t.find((x) => x.assetId === ASSET_WNEAR)?.price ?? 0 };
   }
-  if (!u.deposit_account) {
-    // A 64-hex implicit address with the deposit contract on it and no keys.
-    // Resumable: a crash mid-setup reuses the same pending key.
-    let pending = pendingKeys.get(u.id);
-    if (!pending) {
-      const fresh = near.newImplicit();
-      pendingKeys.put(u.id, fresh.accountId, fresh.secretKey);
-      pending = { user_id: u.id, account_id: fresh.accountId, secret_key: fresh.secretKey };
-    }
-    await near.lockImplicitDeposit(u.id, pending.account_id, pending.secret_key as `ed25519:${string}`);
-    await near.registerDeposit(u.id, pending.account_id);
-    users.setDeposit(u.id, pending.account_id);
-    pendingKeys.clear(u.id); // the key no longer exists on-chain; forget it here too
-    log("api", `${u.id} → ${pending.account_id}`);
-    u = users.byId(u.id)!;
-  }
-  return c.json(publicUser(u));
+  const ngnPerUsd = await paj.publicNgnRate().catch(() => null);
+  return c.json({ nearUsd: nearPrice.usd, ngnPerUsd });
 });
 
-app.get("/me", async (c) => {
-  const email = await callerEmail(c);
-  if (!email) return c.json({ error: "unauthenticated" }, 401);
-  const u = users.byEmail(email);
-  if (!u) return c.json({ error: "not found" }, 404);
-  // What can actually be cashed out: balance minus the contract's storage and reserve.
-  const balance = u.deposit_account ? await near.available(u.deposit_account) : 0n;
-  return c.json({ ...publicUser(u), balanceYocto: balance.toString() });
+app.get("/quote", async (c) => {
+  const q = z
+    .object({ near: z.coerce.number().positive().max(1_000_000), currency, account: accountId.optional() })
+    .parse(c.req.query());
+  return c.json(await preview(q.near, q.currency, q.account ?? "near", session(c)));
 });
 
-const bankSchema = z.object({ bankCode: z.string().min(2), accountNumber: z.string().regex(/^\d{10}$/) });
+/* ---------- PAJ session (email OTP) ---------- */
 
-/** Verify a bank account with the rail and save it. */
-app.post("/me/bank", async (c) => {
-  const email = await callerEmail(c);
-  if (!email) return c.json({ error: "unauthenticated" }, 401);
-  const u = users.byEmail(email);
-  if (!u) return c.json({ error: "not found" }, 404);
-  const body = bankSchema.safeParse(await c.req.json().catch(() => ({})));
-  if (!body.success) return c.json({ error: "bankCode and a 10-digit accountNumber are required" }, 400);
+const email = z.string().email().max(200).transform((s) => s.trim().toLowerCase());
 
-  const banks = await fossapay.banks();
-  const bank = banks.find((b) => b.bankcode === body.data.bankCode);
-  if (!bank) return c.json({ error: "unknown bank code" }, 400);
-  let accountName: string;
-  try {
-    ({ accountName } = await fossapay.nameEnquiry(bank.bankcode, body.data.accountNumber));
-  } catch (e) {
-    return c.json({ error: (e as Error).message }, 400);
-  }
-  users.setBank(u.id, { code: bank.bankcode, name: bank.bankname, number: body.data.accountNumber, accountName });
-  return c.json(publicUser(users.byId(u.id)!));
+app.post("/auth/start", async (c) => {
+  const b = z.object({ email }).parse(await c.req.json());
+  await paj.startSession(b.email);
+  return c.json({ sent: true, email: b.email });
 });
 
-/** Preview the name on an account before saving. */
-app.post("/me/bank/verify", async (c) => {
-  const email = await callerEmail(c);
-  if (!email) return c.json({ error: "unauthenticated" }, 401);
-  const body = bankSchema.safeParse(await c.req.json().catch(() => ({})));
-  if (!body.success) return c.json({ error: "bankCode and a 10-digit accountNumber are required" }, 400);
-  try {
-    return c.json(await fossapay.nameEnquiry(body.data.bankCode, body.data.accountNumber));
-  } catch (e) {
-    return c.json({ error: (e as Error).message }, 400);
-  }
+app.post("/auth/verify", async (c) => {
+  const b = z
+    .object({ email, otp: z.string().regex(/^\d{4,8}$/, "Enter the code from the email"), deviceId: z.string().min(8).max(100) })
+    .parse(await c.req.json());
+  const v = await paj.verifySession(b.email, b.otp, b.deviceId);
+  log("auth", `session for ${b.email} until ${v.expiresAt}`);
+  return c.json({ token: v.token, expiresAt: v.expiresAt, email: b.email });
 });
 
-app.get("/me/orders", async (c) => {
-  const email = await callerEmail(c);
-  if (!email) return c.json({ error: "unauthenticated" }, 401);
-  const u = users.byEmail(email);
-  if (!u) return c.json({ error: "not found" }, 404);
-  return c.json(orders.forUser(u.id).map(publicOrder));
+/* ---------- banks (user session) ---------- */
+
+app.get("/banks", async (c) => {
+  const cur = currency.parse(c.req.query("currency") ?? "NGN");
+  const all = await paj.banks(session(c, true));
+  const iso = COUNTRY[cur].iso;
+  return c.json(all.filter((b) => !b.country || b.country === iso).sort((a, b) => a.name.localeCompare(b.name)));
 });
 
-/* ---------- webhooks ---------- */
+app.post("/bank-accounts/resolve", async (c) => {
+  const b = z.object({ bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) }).parse(await c.req.json());
+  const r = await paj.resolveAccount(session(c, true), b.bankId, b.accountNumber);
+  return c.json({ accountName: r.accountName, accountNumber: r.accountNumber, bank: r.bank });
+});
 
-app.post("/webhooks/fossapay", async (c) => {
-  const raw = await c.req.text();
-  let body: { eventId?: string; eventType?: string; data?: { reference?: string; status?: string } };
-  try {
-    body = JSON.parse(raw);
-  } catch {
-    return c.text("bad json", 400);
-  }
-  if (!fossapay.verifyWebhook(body, c.req.header("x-fossapay-signature"))) return c.text("invalid signature", 401);
-  if (!body.eventId || !body.eventType) return c.text("missing fields", 400);
-  const { webhooks } = await import("./db.js");
-  if (webhooks.seen(body.eventId)) return c.text("ok");
-  webhooks.record(body.eventId, body.eventType);
-  if (body.eventType.startsWith("payout.") && body.data?.reference) {
-    const s = body.eventType.replace("payout.", "") as "completed" | "failed" | "reversed";
-    onPayoutEvent(body.data.reference, s);
+app.get("/bank-accounts", async (c) => c.json(await paj.savedAccounts(session(c, true))));
+
+app.post("/bank-accounts", async (c) => {
+  const b = z.object({ bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) }).parse(await c.req.json());
+  return c.json(await paj.saveAccount(session(c, true), b.bankId, b.accountNumber));
+});
+
+app.post("/kyc", async (c) => {
+  const b = z
+    .object({ idType: z.enum(["BVN", "NIN"]), idNumber: z.string().regex(/^\d{11}$/, "11 digits"), country: z.string().length(2) })
+    .parse(await c.req.json());
+  return c.json(await paj.submitKyc(session(c, true), b.idType, b.idNumber, b.country));
+});
+
+/* ---------- swaps ---------- */
+
+app.post("/swaps", async (c) => {
+  const b = z
+    .object({
+      accountId,
+      near: z.number().positive().max(1_000_000),
+      currency,
+      bankId: z.string().min(1),
+      bankName: z.string().min(1).max(120),
+      accountNumber: z.string().regex(/^\d{6,20}$/),
+      accountName: z.string().min(2).max(120),
+    })
+    .parse(await c.req.json());
+  const { swap, deposit } = await createSwap(b, session(c, true));
+  return c.json({
+    swap: publicSwap(swap),
+    transaction: deposit ? wrapAndSend(deposit.depositAddress, deposit.amountYocto) : null,
+  });
+});
+
+app.post("/swaps/:id/deposit", async (c) => {
+  const { txHash } = z.object({ txHash: z.string().min(4) }).parse(await c.req.json());
+  return c.json(publicSwap(await recordDeposit(c.req.param("id"), txHash)));
+});
+
+app.get("/swaps/:id", (c) => {
+  const s = swaps.byId(c.req.param("id"));
+  return s ? c.json(publicSwap(s)) : c.json({ error: "Not found" }, 404);
+});
+
+app.get("/swaps", (c) => c.json(swaps.forAccount(accountId.parse(c.req.query("account"))).map(publicSwap)));
+
+/* ---------- PAJ webhook ---------- */
+
+// PAJ webhooks aren't signed, so the payload is only a hint: re-read the order with the stored session.
+app.post("/webhooks/paj", async (c) => {
+  const body = (await c.req.json().catch(() => ({}))) as { id?: string };
+  const s = body.id ? swaps.byPajOrderId(body.id) : undefined;
+  if (s?.paj_token && s.paj_order_id) {
+    const t = await paj.transaction(s.paj_token, s.paj_order_id);
+    applyPayout(s, t.status, t.signature);
+    log("webhook", `${s.id} ${t.status}`);
   }
   return c.text("ok");
 });
 
 /* ---------- shapes ---------- */
 
-function slugFor(email: string) {
-  const base = email.split("@")[0].toLowerCase().replace(/[^a-z0-9]/g, "").slice(0, 20) || "user";
-  let id = base.length >= 2 ? base : `${base}0`;
-  let n = 1;
-  while (users.idTaken(id)) id = `${base}${++n}`;
-  return id;
-}
-
-function publicUser(u: ReturnType<typeof users.byId> & object) {
+/**
+ * One transaction, all actions on wrap.near: register the user and the
+ * deposit address (no-ops if already registered; deposit refunded), wrap the
+ * NEAR, send it to the Intents deposit address.
+ */
+function wrapAndSend(depositAddress: string, amountYocto: string) {
+  const fc = (methodName: string, args: object, deposit: string) => ({
+    type: "FunctionCall" as const,
+    params: { methodName, args, gas: "30000000000000", deposit },
+  });
   return {
-    id: u.id,
-    email: u.email,
-    depositAccount: u.deposit_account,
-    bank: u.account_number
-      ? {
-          code: u.bank_code,
-          name: u.bank_name,
-          accountNumber: u.account_number,
-          accountName: u.account_name === UNVERIFIED_NAME ? null : u.account_name,
-          verified: u.account_name !== UNVERIFIED_NAME,
-        }
-      : null,
-    network: config.NEAR_NETWORK,
+    receiverId: "wrap.near",
+    actions: [
+      // Register the user first: otherwise near_deposit deducts storage from the wrapped amount.
+      fc("storage_deposit", { registration_only: true }, "1250000000000000000000"),
+      fc("storage_deposit", { account_id: depositAddress, registration_only: true }, "1250000000000000000000"),
+      fc("near_deposit", {}, amountYocto),
+      fc("ft_transfer", { receiver_id: depositAddress, amount: amountYocto, memo: "paya" }, "1"),
+    ],
   };
 }
 
-function publicOrder(o: ReturnType<typeof orders.byId> & object) {
+const mask = (s: string) => (s.length <= 4 ? s : `•••• ${s.slice(-4)}`);
+
+function publicSwap(s: Swap) {
   return {
-    id: o.id,
-    status: o.status,
-    nearAmount: Number(o.near_yocto) / 1e24,
-    usdcOut: o.usdc_out ? Number(o.usdc_out) : null,
-    rateNgn: o.rate_ngn,
-    railFeeNgn: o.rail_fee_ngn,
-    marginNgn: o.margin_ngn,
-    ngnAmount: o.ngn_amount,
-    forwardTx: o.forward_tx,
-    payoutReference: o.payout_reference,
-    simulated: Boolean(o.simulated),
-    error: o.error,
-    createdAt: o.created_at,
-    updatedAt: o.updated_at,
+    id: s.id,
+    status: s.status,
+    demo: Boolean(s.demo),
+    nearIn: Number(BigInt(s.amount_in) / 10n ** 18n) / 1e6,
+    currency: s.currency,
+    fiatAmount: s.fiat_amount,
+    rate: s.rate,
+    usdcAmount: Number(s.usdc_amount),
+    feeUsdc: Number(s.fee_usdc),
+    recipient: { bankName: s.bank_name, account: mask(s.account_number), name: s.account_name },
+    depositTx: s.deposit_tx,
+    paymentReference: s.payment_reference,
+    error: s.error,
+    createdAt: s.created_at,
+    updatedAt: s.updated_at,
   };
 }

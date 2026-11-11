@@ -6,162 +6,108 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
-import { api, ApiError, type Me } from "@/lib/api";
+import { api, setSessionToken } from "@/lib/api";
 
 /**
- * Who is signed in, their Paya account, and the "hide balances" toggle.
- *
- * Sign-in is by email. In demo mode the relay trusts the email directly; with
- * Privy configured the same provider will hand the relay a Privy token instead
- * (the Privy wiring swaps `login` and `token`, nothing else).
+ * Email sign-in with the payout network (PAJ). Their OTP session is what lets
+ * us list banks, resolve account names, keep saved recipients and create the
+ * payout order. Stored in this browser until it expires.
  */
-type Session = {
+type Saved = { email: string; token: string; expiresAt: string } | null;
+
+type SessionState = {
   email: string | null;
-  me: Me | null;
-  loading: boolean;
-  error: string | null;
-  hidden: boolean;
-  login: (email: string) => Promise<void>;
-  logout: () => void;
-  refresh: () => Promise<void>;
-  toggleHidden: () => void;
-  /** Kept for components written against the wallet stub. */
-  accountId: string | null;
+  signedIn: boolean;
+  startSignIn: (email: string) => Promise<void>;
+  verify: (email: string, otp: string) => Promise<void>;
+  signOut: () => void;
 };
 
-const SessionContext = createContext<Session | null>(null);
-
-/* ---- localStorage-backed store for email + hidden flag ---- */
+const SessionContext = createContext<SessionState | null>(null);
 
 const KEY = "paya:session";
-type Saved = { email: string | null; hidden: boolean };
+const DEVICE_KEY = "paya:device";
 const listeners = new Set<() => void>();
-const readRaw = () => {
+let cacheRaw: string | null = null;
+let cacheVal: Saved = null;
+
+function read(): Saved {
+  let raw: string | null = null;
   try {
-    return localStorage.getItem(KEY);
+    raw = localStorage.getItem(KEY);
   } catch {
-    return null;
+    /* blocked */
   }
-};
-const write = (v: Saved) => {
+  if (raw === cacheRaw) return cacheVal;
+  cacheRaw = raw;
   try {
-    localStorage.setItem(KEY, JSON.stringify(v));
+    const v = raw ? (JSON.parse(raw) as Saved) : null;
+    cacheVal = v && Date.parse(v.expiresAt) > Date.now() ? v : null;
   } catch {
-    /* ignore */
+    cacheVal = null;
+  }
+  return cacheVal;
+}
+
+function write(v: Saved) {
+  try {
+    if (v) localStorage.setItem(KEY, JSON.stringify(v));
+    else localStorage.removeItem(KEY);
+  } catch {
+    cacheRaw = v ? JSON.stringify(v) : null;
+    cacheVal = v;
   }
   listeners.forEach((l) => l());
-};
+}
+
 const subscribe = (cb: () => void) => {
   listeners.add(cb);
-  window.addEventListener("storage", cb);
-  return () => {
-    listeners.delete(cb);
-    window.removeEventListener("storage", cb);
-  };
+  return () => listeners.delete(cb);
 };
-const parse = (raw: string | null): Saved => {
+
+function deviceId() {
   try {
-    const v = raw ? (JSON.parse(raw) as Partial<Saved>) : {};
-    return { email: v.email ?? null, hidden: Boolean(v.hidden) };
+    let id = localStorage.getItem(DEVICE_KEY);
+    if (!id) {
+      id = crypto.randomUUID();
+      localStorage.setItem(DEVICE_KEY, id);
+    }
+    return id;
   } catch {
-    return { email: null, hidden: false };
+    return crypto.randomUUID();
   }
-};
+}
 
 export function SessionProvider({ children }: { children: ReactNode }) {
-  const raw = useSyncExternalStore(subscribe, readRaw, () => null);
-  const saved = useMemo(() => parse(raw), [raw]);
-  const [me, setMe] = useState<Me | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const saved = useSyncExternalStore(subscribe, read, () => null);
 
-  const refresh = useCallback(async () => {
-    if (!saved.email) return;
-    try {
-      const m = await api.me({ email: saved.email });
-      setMe(m);
-      setError(null);
-    } catch (e) {
-      setError((e as Error).message);
-    }
-  }, [saved.email]);
-
-  // Load the profile whenever the signed-in email changes.
+  // Every relay request carries the session when we have one.
   useEffect(() => {
-    let cancelled = false;
-    if (!saved.email) {
-      queueMicrotask(() => {
-        if (!cancelled) setMe(null);
-      });
-      return () => {
-        cancelled = true;
-      };
-    }
-    const email = saved.email;
-    api
-      .me({ email })
-      // Saved session but the relay doesn't know this email (e.g. its database
-      // was reset): sign in again instead of waiting on an address forever.
-      .catch((e: Error) => {
-        if (e instanceof ApiError && e.status === 404) return api.signIn({ email });
-        throw e;
-      })
-      .then((m) => {
-        if (!cancelled) setMe(m);
-      })
-      .catch((e: Error) => {
-        if (!cancelled) setError(e.message);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [saved.email]);
+    setSessionToken(saved?.token ?? null);
+  }, [saved?.token]);
 
-  const login = useCallback(
-    async (email: string) => {
-      setLoading(true);
-      setError(null);
-      try {
-        const m = await api.signIn({ email });
-        setMe(m);
-        write({ email, hidden: saved.hidden });
-      } catch (e) {
-        setError((e as Error).message);
-        throw e;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [saved.hidden],
+  const startSignIn = useCallback(async (email: string) => {
+    await api.startSignIn(email.trim().toLowerCase());
+  }, []);
+
+  const verify = useCallback(async (email: string, otp: string) => {
+    const r = await api.verifySignIn(email.trim().toLowerCase(), otp.trim(), deviceId());
+    setSessionToken(r.token);
+    write({ email: r.email, token: r.token, expiresAt: r.expiresAt });
+  }, []);
+
+  const signOut = useCallback(() => {
+    setSessionToken(null);
+    write(null);
+  }, []);
+
+  const value = useMemo<SessionState>(
+    () => ({ email: saved?.email ?? null, signedIn: Boolean(saved), startSignIn, verify, signOut }),
+    [saved, startSignIn, verify, signOut],
   );
-
-  const logout = useCallback(() => {
-    write({ email: null, hidden: saved.hidden });
-    setMe(null);
-  }, [saved.hidden]);
-
-  const toggleHidden = useCallback(() => write({ email: saved.email, hidden: !saved.hidden }), [saved]);
-
-  const value = useMemo<Session>(
-    () => ({
-      email: saved.email,
-      me,
-      loading,
-      error,
-      hidden: saved.hidden,
-      login,
-      logout,
-      refresh,
-      toggleHidden,
-      accountId: me?.depositAccount ?? null,
-    }),
-    [saved.email, saved.hidden, me, loading, error, login, logout, refresh, toggleHidden],
-  );
-
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;
 }
 
@@ -170,6 +116,3 @@ export function useSession() {
   if (!ctx) throw new Error("useSession must be used inside <SessionProvider>");
   return ctx;
 }
-
-/** Compatibility alias for components written against the wallet stub. */
-export const useWallet = useSession;

@@ -2,19 +2,16 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Clock, Coins, Home, Landmark, LogOut, MessageSquare, TrendingUp } from "lucide-react";
+import { ArrowLeftRight, Clock, LogOut, MessageSquare, TrendingUp, Users, Wallet } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { useSession } from "@/components/app/session-provider";
+import { useWallet } from "@/components/app/wallet-provider";
 import { cn } from "@/lib/utils";
 
-const main = [{ href: "/app", label: "Home", icon: Home }];
-const markets = [
-  { href: "/app/crypto", label: "Crypto", icon: Coins },
-  { href: "/app/earn", label: "Earn", icon: TrendingUp },
-];
+const main = [{ href: "/app", label: "Swap", icon: ArrowLeftRight }];
+const markets = [{ href: "/app/earn", label: "Earn", icon: TrendingUp }];
 const more = [
   { href: "/app/activity", label: "Activity", icon: Clock },
-  { href: "/app/contacts", label: "Bank account", icon: Landmark },
+  { href: "/app/recipients", label: "Recipients", icon: Users },
 ];
 
 export const allNav = [...main, ...markets, ...more];
@@ -23,9 +20,10 @@ function isActive(pathname: string, href: string) {
   return href === "/app" ? pathname === "/app" : pathname.startsWith(href);
 }
 
+export const shortAccount = (a: string) => (a.length > 20 ? `${a.slice(0, 8)}…${a.slice(-6)}` : a);
+
 export function Sidebar() {
   const pathname = usePathname();
-  const { email, me, logout } = useSession();
 
   return (
     <aside className="hidden w-72 shrink-0 flex-col p-4 lg:flex">
@@ -47,21 +45,45 @@ export function Sidebar() {
         Give feedback
       </a>
 
-      <div className="glass-card mt-2 rounded-2xl p-3">
-        <p className="truncate text-sm font-medium">{email}</p>
-        <p className="truncate font-mono text-xs text-muted-foreground tabular-nums">
-          {me?.depositAccount ?? "creating your address…"}
-        </p>
-        <button
-          type="button"
-          onClick={logout}
-          className="focus-ring mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground transition-colors duration-100 hover:text-foreground"
-        >
-          <LogOut className="size-3.5" aria-hidden="true" />
-          Sign out
-        </button>
-      </div>
+      <WalletCard />
     </aside>
+  );
+}
+
+function WalletCard() {
+  const { accountId, ready, connecting, connect, disconnect } = useWallet();
+
+  if (!accountId) {
+    return (
+      <button
+        type="button"
+        onClick={() => void connect()}
+        disabled={!ready || connecting}
+        className="focus-ring mt-2 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:opacity-60"
+      >
+        <Wallet className="size-4" aria-hidden="true" />
+        {connecting ? "Connecting…" : "Connect wallet"}
+      </button>
+    );
+  }
+
+  return (
+    <div className="glass-card mt-2 rounded-2xl p-3">
+      <div className="flex items-center gap-2">
+        <span className="size-2 rounded-full bg-success" aria-hidden="true" />
+        <p className="truncate font-mono text-sm tabular-nums" title={accountId}>
+          {shortAccount(accountId)}
+        </p>
+      </div>
+      <button
+        type="button"
+        onClick={() => void disconnect()}
+        className="focus-ring mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground transition-colors duration-100 hover:text-foreground"
+      >
+        <LogOut className="size-3.5" aria-hidden="true" />
+        Disconnect
+      </button>
+    </div>
   );
 }
 
@@ -101,7 +123,7 @@ export function MobileNav() {
       aria-label="App"
       className="glass fixed inset-x-0 bottom-0 z-40 border-t border-border pb-[env(safe-area-inset-bottom)] lg:hidden"
     >
-      <ul className="grid grid-cols-5">
+      <ul className="grid grid-cols-4">
         {allNav.map(({ href, label, icon: Icon }) => {
           const active = isActive(pathname, href);
           return (

@@ -4,19 +4,20 @@ import { log } from "./log.js";
 /**
  * NEAR Intents 1Click Swap API — NEAR → USDC on Solana.
  * Docs: https://docs.near-intents.org/integration/distribution-channels/1click-api
- * Asset ids verified live against /v0/tokens on 2026-11-10.
+ * Asset ids verified live against /v0/tokens.
  */
 const BASE = "https://1click.chaindefuser.com/v0";
-export const ASSET_NEAR = "nep141:wrap.near";
+export const ASSET_WNEAR = "nep141:wrap.near";
 export const ASSET_USDC_SOLANA = "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near";
 
 export type Quote = {
-  depositAddress: string;
-  amountIn: string;
+  depositAddress?: string; // absent on dry quotes
+  amountIn: string; // yoctoNEAR
+  minAmountIn?: string;
   amountOut: string; // USDC, 6 decimals
-  amountOutFormatted?: string;
-  timeEstimate?: number;
-  deadline: string;
+  minAmountOut?: string;
+  timeEstimate?: number; // seconds
+  deadline?: string;
 };
 
 export type SwapStatus =
@@ -34,36 +35,49 @@ function headers() {
   return h;
 }
 
-export const oneclick = {
-  /** EXACT_INPUT quote: send `amountYocto` NEAR, receive USDC on Solana at `recipient`. */
-  async quote(amountYocto: bigint, recipient: string, refundTo: string, dry = false): Promise<Quote> {
-    const body = {
-      dry,
-      swapType: "EXACT_INPUT",
+async function quote(body: Record<string, unknown>): Promise<Quote> {
+  const r = await fetch(`${BASE}/quote`, {
+    method: "POST",
+    headers: headers(),
+    body: JSON.stringify({
       slippageTolerance: 100, // 1%
-      originAsset: ASSET_NEAR,
+      originAsset: ASSET_WNEAR,
       depositType: "ORIGIN_CHAIN",
       destinationAsset: ASSET_USDC_SOLANA,
-      amount: amountYocto.toString(),
-      recipient,
       recipientType: "DESTINATION_CHAIN",
-      refundTo,
       refundType: "ORIGIN_CHAIN",
-      deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
+      deadline: new Date(Date.now() + 20 * 60 * 1000).toISOString(),
       referral: "paya",
-    };
-    const r = await fetch(`${BASE}/quote`, {
-      method: "POST",
-      headers: headers(),
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(15000),
+      ...body,
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+  const j = (await r.json().catch(() => ({}))) as { quote?: Quote; message?: string };
+  if (!r.ok || !j.quote) {
+    // 1Click answers 500 when the refund account doesn't exist on mainnet.
+    if (r.status >= 500 || /internal server error/i.test(j.message ?? "")) throw new Error("Couldn't get a swap quote. Check that your NEAR account exists on mainnet and try again.");
+    throw new Error(`Swap quote failed: ${j.message ?? r.status}`);
+  }
+  return j.quote;
+}
+
+export const oneclick = {
+  /** Preview: what `yocto` NEAR becomes in USDC. No deposit address is created. */
+  previewExactIn(yocto: bigint, refundTo: string, recipient: string) {
+    return quote({ dry: true, swapType: "EXACT_INPUT", amount: yocto.toString(), refundTo, recipient });
+  },
+
+  /**
+   * Real quote: deliver EXACTLY `usdcUnits` (6dp) to `recipient` on Solana.
+   * Returns the deposit address and `amountIn` (includes a slippage buffer;
+   * anything unused is refunded to `refundTo`, the user's NEAR account).
+   */
+  async exactOut(usdcUnits: bigint, recipient: string, refundTo: string, dry = false) {
+    const q = await quote({ dry, swapType: "EXACT_OUTPUT", amount: usdcUnits.toString(), recipient, refundTo });
+    log("1click", `exact-out ${Number(usdcUnits) / 1e6} USDC ← ${Number(q.amountIn) / 1e24} NEAR`, {
+      deposit: q.depositAddress,
     });
-    const j = (await r.json()) as { quote?: Quote; message?: string };
-    if (!r.ok || !j.quote) throw new Error(`1Click quote failed: ${r.status} ${j.message ?? ""}`);
-    log("1click", `quote ${j.quote.amountIn} yocto → ${j.quote.amountOut} USDC`, {
-      deposit: j.quote.depositAddress,
-    });
-    return j.quote;
+    return q;
   },
 
   async submitDeposit(depositAddress: string, txHash: string) {
@@ -72,46 +86,15 @@ export const oneclick = {
       headers: headers(),
       body: JSON.stringify({ depositAddress, txHash }),
       signal: AbortSignal.timeout(10000),
-    }).catch(() => undefined); // optional hint; polling still works
+    }).catch(() => undefined); // an optional speed-up hint; polling still works without it
   },
 
-  async status(depositAddress: string): Promise<{ status: SwapStatus; amountOut?: string }> {
+  async status(depositAddress: string): Promise<SwapStatus> {
     const r = await fetch(`${BASE}/status?depositAddress=${encodeURIComponent(depositAddress)}`, {
       headers: headers(),
       signal: AbortSignal.timeout(10000),
     });
-    if (!r.ok) throw new Error(`1Click status ${r.status}`);
-    const j = (await r.json()) as {
-      status: SwapStatus;
-      swapDetails?: { amountOut?: string };
-    };
-    return { status: j.status, amountOut: j.swapDetails?.amountOut };
-  },
-};
-
-/* ---------- simulation for testnet ---------- */
-
-const simulated = new Map<string, { createdAt: number; amountOut: string }>();
-
-export const oneclickSim = {
-  quote(amountYocto: bigint, usdPerNear: number): Quote {
-    const near = Number(amountYocto) / 1e24;
-    const usdc = near * usdPerNear * 0.9965;
-    const amountOut = Math.floor(usdc * 1e6).toString();
-    const depositAddress = `sim-${Math.random().toString(36).slice(2, 10)}.testnet`;
-    simulated.set(depositAddress, { createdAt: Date.now(), amountOut });
-    return {
-      depositAddress,
-      amountIn: amountYocto.toString(),
-      amountOut,
-      deadline: new Date(Date.now() + 10 * 60 * 1000).toISOString(),
-    };
-  },
-  status(depositAddress: string): { status: SwapStatus; amountOut?: string } {
-    const s = simulated.get(depositAddress);
-    if (!s) return { status: "FAILED" };
-    const age = Date.now() - s.createdAt;
-    if (age < 8000) return { status: "PROCESSING" };
-    return { status: "SUCCESS", amountOut: s.amountOut };
+    if (!r.ok) throw new Error(`Swap status ${r.status}`);
+    return ((await r.json()) as { status: SwapStatus }).status;
   },
 };
