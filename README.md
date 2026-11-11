@@ -14,6 +14,7 @@ NEAR ──NEAR Intents (1Click)──▶ USDC on Solana ──PAJ──▶ bank
 
 - **Frontend** ([frontend/](frontend/)): landing page and the swap app — wallet connect via NEAR Connect, email verification with the payout network, bank accounts with real account-holder names, a live quote with every fee shown, and progress until the money lands.
 - **Relay** ([services/relay/](services/relay/)): quotes, places the PAJ order and the exact-output 1Click swap, hands the wallet one transaction to sign, tracks both legs. Never holds funds.
+- **Admin console** ([admin/](admin/)): internal, password-protected dashboard of every cash-out with its full timeline, explorer links and an audit log, for support and disputes. Runs separately on port 3001.
 - **Contracts** ([contracts/](contracts/)): the earlier deposit-account design (factory + locked per-user accounts). Not used by the current wallet flow; kept for a "send NEAR from an exchange" mode.
 
 ## Run it locally

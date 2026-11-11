@@ -273,8 +273,9 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
               className="focus-ring min-h-10 appearance-none rounded-full border border-border bg-card py-1.5 pr-8 pl-3 text-sm font-medium"
             >
               {currencies.map((c) => (
-                <option key={c.code} value={c.code}>
+                <option key={c.code} value={c.code} disabled={c.comingSoon}>
                   {c.flag} {c.code}
+                  {c.comingSoon ? " · soon" : ""}
                 </option>
               ))}
             </select>
@@ -285,6 +286,16 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
           </span>
         </div>
       </div>
+
+      {currencies.some((c) => c.comingSoon) && (
+        <p className="mt-2 px-1 text-xs text-muted-foreground">
+          {currencies
+            .filter((c) => c.comingSoon)
+            .map((c) => `${c.flag} ${c.code}`)
+            .join(", ")}{" "}
+          fiat payouts coming soon.
+        </p>
+      )}
 
       {/* rate + fees */}
       <div className="mt-3 min-h-6 px-1 text-sm">

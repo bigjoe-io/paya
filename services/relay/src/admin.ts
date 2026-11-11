@@ -105,7 +105,11 @@ admin.post("/swaps/:id/recheck", async (c) => {
     const st = await oneclick.status(s.deposit_address);
     return c.json({ checkedAt: new Date().toISOString(), swap: st });
   } catch (e) {
-    return c.json({ checkedAt: new Date().toISOString(), swap: null, note: (e as Error).message });
+    const msg = (e as Error).message;
+    const note = /404/.test(msg)
+      ? "NEAR Intents has no record of this deposit address: the user's wallet transaction never reached it."
+      : msg;
+    return c.json({ checkedAt: new Date().toISOString(), swap: null, note });
   }
 });
 

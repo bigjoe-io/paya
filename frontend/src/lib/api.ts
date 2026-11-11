@@ -5,7 +5,7 @@
  */
 export const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL ?? "http://localhost:8787";
 
-export type Currency = { code: string; name: string; symbol: string; flag: string; country: string };
+export type Currency = { code: string; name: string; symbol: string; flag: string; country: string; comingSoon?: boolean };
 
 export type Bank = { id: string; code: string; name: string; logo?: string; country: string };
 export type SavedAccount = { id: string; accountName: string; accountNumber: string; bank: string };

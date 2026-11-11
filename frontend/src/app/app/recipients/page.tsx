@@ -63,13 +63,17 @@ export default function RecipientsPage() {
                 key={c.code}
                 type="button"
                 aria-pressed={c.code === code}
+                disabled={c.comingSoon}
+                title={c.comingSoon ? `${c.code} payouts are coming soon` : undefined}
                 onClick={() => setCode(c.code)}
                 className={cn(
                   "focus-ring min-h-10 rounded-full px-3.5 text-sm transition-colors duration-100",
                   c.code === code ? "bg-foreground text-background" : "bg-card text-foreground/80 hover:text-foreground",
+                  c.comingSoon && "cursor-not-allowed opacity-60 hover:text-foreground/80",
                 )}
               >
                 {c.flag} {c.country}
+                {c.comingSoon && <span className="ml-1.5 rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] uppercase">Soon</span>}
               </button>
             ))}
           </div>

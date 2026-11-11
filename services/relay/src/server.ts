@@ -47,6 +47,7 @@ const currency = z
   .string()
   .length(3)
   .transform((s) => s.toUpperCase())
+  .refine((s) => s !== "USD", "USD payouts are coming soon")
   .refine((s) => Boolean(COUNTRY[s]), "Unsupported currency");
 
 /** The user's PAJ session, sent by the frontend as a Bearer token. */
@@ -63,8 +64,14 @@ function session(c: Context, required = false) {
 
 app.get("/health", (c) => c.json({ ok: true, demo: config.demo, feePercent: config.FEE_PERCENT }));
 
+/** Shown in the app but not payable yet. */
+const COMING_SOON = [{ code: "USD", name: "US Dollar", symbol: "$", flag: "🇺🇸", country: "United States", comingSoon: true }];
+
 app.get("/currencies", (c) =>
-  c.json(Object.entries(COUNTRY).map(([code, x]) => ({ code, name: x.country, symbol: x.symbol, flag: x.flag, country: x.country }))),
+  c.json([
+    ...Object.entries(COUNTRY).map(([code, x]) => ({ code, name: x.country, symbol: x.symbol, flag: x.flag, country: x.country })),
+    ...COMING_SOON,
+  ]),
 );
 
 let nearPrice: { at: number; usd: number } | null = null;
