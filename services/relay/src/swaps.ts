@@ -2,7 +2,7 @@ import crypto from "node:crypto";
 import { config } from "./config.js";
 import { swaps, users, type Swap, type SwapStatus } from "./db.js";
 import { log, warn } from "./log.js";
-import { paj, type PajStatus } from "./paj.js";
+import { paj, pajV2, type PajStatus, type PajV2Status } from "./paj.js";
 import { round2 } from "./quote.js";
 import * as rubic from "./rubic.js";
 import { fromUnits, sendUsdc, solBalance, toUnits, treasuryAddress, usdcBalance, usdcReceivedIn } from "./solana.js";
@@ -205,39 +205,20 @@ async function advanceLegacy(s: Swap) {
     return;
   }
   if (s.status === "paying" && s.paj_order_id) {
-    const owner = users.byAddress(s.account_id);
-    const token = (owner && pajTokenOf(owner)) || s.paj_token;
-    if (!token) return;
-    const t = await paj.transaction(token, s.paj_order_id);
-    applyPayout(s, t.status, t.signature);
+    const t = await pajV2.transaction(s.paj_order_id);
+    applyPayout(s, t.status, t.signature ?? undefined);
   }
 }
 
 async function payPaj(s: Swap) {
   if (s.payout_started) return; // never send twice; a half-finished send is resolved by hand
-  const owner = users.byAddress(s.account_id);
-  const token = owner ? pajTokenOf(owner) : null;
-  if (!token) {
-    if (!s.events?.some((e) => e.type === "waiting_sign_in")) swaps.event(s.id, "waiting_sign_in");
-    return; // the USDC waits safely in Paya's wallet until the user verifies their email again
-  }
   const received = Number(s.usdc_received);
+  // Paya's fee stays in Paya's wallet; PAJ is paid the rest and pays the bank at its live rate.
   const fee = round2((received * config.FEE_PERCENT) / 100);
-  let usdc = round2(received - fee);
-  let order = await paj.createOfframp(token, {
-    bankId: s.bank_id,
-    accountNumber: s.account_number,
-    currency: s.currency,
-    usdc,
-    feeUsdc: fee,
-    reference: s.id,
-  });
-  // PAJ's amount includes the fee; it must fit inside what arrived.
-  if (order.amount > received) {
-    usdc = round2(usdc - (order.amount - received) - 0.01);
-    order = await paj.createOfframp(token, { bankId: s.bank_id, accountNumber: s.account_number, currency: s.currency, usdc, feeUsdc: fee, reference: s.id });
-    if (order.amount > received) throw new Error(`PAJ asks ${order.amount} USDC but only ${received} arrived`);
-  }
+  const usdc = round2(received - fee);
+  const bankCode = await pajV2.bankCode(s.bank_id);
+  const order = await pajV2.createOfframp({ bankCode, accountNumber: s.account_number, currency: s.currency, usdc, reference: s.id });
+  if (order.amount > received) throw new Error(`PAJ asks ${order.amount} USDC but only ${received} arrived`);
   if ((await solBalance()) < 0.003) throw new Error("Paya's Solana wallet is low on SOL for fees");
   if ((await usdcBalance()) < toUnits(order.amount)) throw new Error("Paya's Solana wallet doesn't hold this USDC yet");
 
@@ -247,25 +228,26 @@ async function payPaj(s: Swap) {
     receive_address: order.address,
     amount_to_transfer: String(order.amount),
     usdc_amount: usdc.toFixed(2),
-    fee_usdc: String(order.fee ?? fee),
+    fee_usdc: fee.toFixed(2),
     rate: order.rate,
     fiat_amount: Math.floor(order.fiatAmount),
   });
-  swaps.event(s.id, "paj_order", { pajOrderId: order.id, pajAddress: order.address, usdc: order.amount, fiat: order.fiatAmount, rate: order.rate });
+  swaps.event(s.id, "paj_order", { pajOrderId: order.id, pajAddress: order.address, usdc: order.amount, fiat: order.fiatAmount, rate: order.rate, payaFeeUsdc: fee });
   const sig = await sendUsdc(order.address, toUnits(order.amount));
   swaps.update(s.id, { payout_tx: sig, status: "paying" });
   swaps.event(s.id, "usdc_sent_to_paj", { tx: sig, usdc: order.amount });
   swaps.event(s.id, "status", { from: "swapping", to: "paying" });
-  log("swap", `${s.id} paid PAJ ${order.amount} USDC (${sig}) → ${order.fiatAmount} ${s.currency}`);
+  log("swap", `${s.id} paid PAJ ${order.amount} USDC (${sig}) → ${order.fiatAmount} ${s.currency}; Paya fee ${fee} USDC`);
 }
 
 /** Shared by polling and webhooks. INIT → PAID (USDC received) → COMPLETED (bank paid). */
-export function applyPayout(s: Swap, status: PajStatus, reference?: string) {
+export function applyPayout(s: Swap, status: PajStatus | PajV2Status, reference?: string) {
   if (status !== s.payout_status) {
     swaps.update(s.id, { payout_status: status });
     swaps.event(s.id, "payout_status", { status, ...(reference ? { reference } : {}) });
   }
   if (status === "COMPLETED") set(s, "paid", { paj_token: null, ...(reference ? { payment_reference: reference } : {}) });
+  else if (status === "ERROR") set(s, "failed", { error: "The bank payout failed. Our team has the details and will sort it out.", paj_token: null });
 }
 
 function set(s: Swap, status: SwapStatus, extra: Partial<Swap> = {}) {

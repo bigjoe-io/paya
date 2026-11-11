@@ -5,7 +5,7 @@ import { buys, swaps, users, type User } from "./db.js";
 import { log, warn } from "./log.js";
 import { accountExists, addressFor, balances, SEND_COST, sendNear, toNear, toYocto, unwrap, UNWRAP_COST } from "./near.js";
 import { minCashoutNear, preview } from "./quote.js";
-import { COUNTRY, paj, PajError } from "./paj.js";
+import { COUNTRY, pajV2, PajError } from "./paj.js";
 import { decrypt, encrypt } from "./secrets.js";
 import { failSwap, lockCashout, recordDeposit } from "./swaps.js";
 import { solBalance } from "./solana.js";
@@ -84,25 +84,21 @@ export function requirePaj(u: User) {
 
 /** Link (or change) the payout bank. The account holder's name always comes from the bank, never the client. */
 export async function setBank(u: User, p: { currency: string; bankId: string; accountNumber: string }) {
-  const token = requirePaj(u);
   if (!COUNTRY[p.currency]) throw new Error("Unsupported currency");
-  const resolved = await paj.resolveAccount(token, p.bankId, p.accountNumber);
-  const bankName =
-    resolved.bank?.name ?? (await paj.banks(token)).find((b) => b.id === p.bankId)?.name ?? "Bank";
-  // Saving it with PAJ makes it a payout destination for this user; already-saved is fine.
-  await paj.saveAccount(token, p.bankId, p.accountNumber).catch((e: Error) => {
-    if (!/exist|already/i.test(e.message)) throw e;
-  });
+  if (!(await pajV2.activeCurrencies()).has(p.currency)) throw new Error(`Payouts in ${p.currency} are coming soon`);
+  const bankCode = await pajV2.bankCode(p.bankId);
+  // Confirms the account with the bank and registers it with PAJ (idempotent).
+  const reg = await pajV2.registerBank(bankCode, p.accountNumber);
   const before = u.account_number ? `${u.bank_name} ${last4(u.account_number)}` : null;
   users.update(u.id, {
     currency: p.currency,
-    bank_id: p.bankId,
-    bank_name: bankName,
-    account_number: resolved.accountNumber || p.accountNumber,
-    account_name: resolved.accountName,
+    bank_id: bankCode,
+    bank_name: reg.bank,
+    account_number: reg.accountNumber || p.accountNumber,
+    account_name: reg.accountName,
   });
-  users.event(u.id, "bank_linked", { currency: p.currency, bank: bankName, account: last4(p.accountNumber), name: resolved.accountName, before });
-  audit(before ? "bank_changed" : "bank_linked", u.email, { bank: bankName, account: last4(p.accountNumber), name: resolved.accountName, before });
+  users.event(u.id, "bank_linked", { currency: p.currency, bank: reg.bank, account: last4(p.accountNumber), name: reg.accountName, before });
+  audit(before ? "bank_changed" : "bank_linked", u.email, { bank: reg.bank, account: last4(p.accountNumber), name: reg.accountName, before });
   return users.byId(u.id)!;
 }
 
@@ -132,7 +128,7 @@ export async function accountView(u: User) {
       : null,
     autoCashout: Boolean(u.auto_cashout),
     autoPausedUntil: u.auto_paused_until && Date.parse(u.auto_paused_until) > Date.now() ? u.auto_paused_until : null,
-    verified: Boolean(pajTokenOf(u)),
+    verified: true, // money no longer depends on a payout session (PAJ v2 uses Paya's business key)
   };
 }
 
@@ -162,7 +158,6 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
   return exclusive(u, async () => {
     if (!u.bank_id || !u.currency || !u.account_number || !u.account_name || !u.bank_name)
       throw new Error("Link a bank account first");
-    const token = requirePaj(u);
     if (hasOpenCashOut(u)) throw new Error("A cash-out is already being sent. Try again in a moment.");
     if (config.demo) throw new Error("Cash-outs are switched off on this server (LIVE_ORDERS=false)");
     // Paya's Solana wallet forwards the USDC to PAJ; without SOL for fees the order would stall halfway.
@@ -177,7 +172,7 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
     if (near < min) throw new Error(`Minimum cash-out is ${min} NEAR`);
 
     // Estimate what lands in the bank (the final figure is set when the USDC arrives).
-    const est = await preview(near, u.currency, u.address, token);
+    const est = await preview(near, u.currency, u.address);
     const { swap, depositAddress, yocto } = await lockCashout({
       userId: u.id,
       address: u.address,
@@ -290,15 +285,6 @@ async function checkUser(u: User) {
   const autoMin = MIN_AUTO() > toYocto(await minCashoutNear()) ? MIN_AUTO() : toYocto(await minCashoutNear());
   if (spendable < autoMin) return;
 
-  if (!pajTokenOf(u)) {
-    if (!waitingSignInNoted.has(u.id)) {
-      waitingSignInNoted.add(u.id);
-      users.event(u.id, "auto_waiting_sign_in", { near: toNear(spendable) });
-      log("account", `${u.id} has ${toNear(spendable)} NEAR waiting; needs to verify email again`);
-    }
-    return;
-  }
-  waitingSignInNoted.delete(u.id);
 
   // Round down to 0.0001 NEAR so the swap math never exceeds the balance.
   const near = Math.floor(toNear(spendable) * 1e4) / 1e4;

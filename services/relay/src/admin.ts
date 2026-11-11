@@ -5,8 +5,7 @@ import { config } from "./config.js";
 import { accessCodes, buys, swaps, users, waitlist, type Buy, type Swap, type User } from "./db.js";
 import { accessEnabled, createCode } from "./access.js";
 import { balances, toNear } from "./near.js";
-import { paj } from "./paj.js";
-import { pajTokenOf } from "./accounts.js";
+import { pajV2 } from "./paj.js";
 import * as rubic from "./rubic.js";
 import { solBalance, treasuryAddress, usdcBalance, fromUnits } from "./solana.js";
 
@@ -181,11 +180,8 @@ admin.post("/buys/:id/recheck", async (c) => {
 admin.get("/buys/:id/paj", async (c) => {
   const b = buys.byId(c.req.param("id"));
   if (!b?.paj_order_id) return c.json({ error: "Not found" }, 404);
-  const u = users.byAddress(b.account_id);
-  const token = u ? pajTokenOf(u) : null;
-  if (!token) return c.json({ error: "No valid payout session for this account" }, 409);
   try {
-    return c.json(await paj.transaction(token, b.paj_order_id));
+    return c.json(await pajV2.transaction(b.paj_order_id));
   } catch (e) {
     return c.json({ error: (e as Error).message }, 502);
   }

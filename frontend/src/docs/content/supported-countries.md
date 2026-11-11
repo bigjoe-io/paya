@@ -11,11 +11,13 @@ tags: fees-and-limits, linking-a-bank
 | Country | Currency | Cash out | Buy NEAR |
 |---|---|---|---|
 | 🇳🇬 Nigeria | NGN (₦) | Yes | Yes |
-| 🇬🇭 Ghana | GHS (GH₵) | Yes | Yes |
-| 🇰🇪 Kenya | KES (KSh) | Yes | Yes |
-| 🇹🇿 Tanzania | TZS (TSh) | Yes | Yes |
-| 🇿🇦 South Africa | ZAR (R) | Yes | Yes |
+| 🇬🇭 Ghana | GHS (GH₵) | Coming soon | Coming soon |
+| 🇰🇪 Kenya | KES (KSh) | Coming soon | Coming soon |
+| 🇹🇿 Tanzania | TZS (TSh) | Coming soon | Coming soon |
+| 🇿🇦 South Africa | ZAR (R) | Coming soon | Coming soon |
 | 🇺🇸 United States | USD ($) | Coming soon | Coming soon |
+
+The app always shows which countries are open right now; a country switches on in the app the moment our payment partner opens it.
 
 Your payout currency is the currency of the bank account you link. To change it, link a bank account in another country.
 
@@ -25,7 +27,4 @@ For some purchases our payment partner asks you to verify your identity once wit
 
 ## Rates
 
-- **Nigeria:** the live rate is shown before you sign in.
-- **Other countries:** before you sign in you see an estimate. After you sign in, you see the exact rate for your account.
-
-The rate is always shown before you confirm.
+You see the live rate, with every fee included, before you confirm.

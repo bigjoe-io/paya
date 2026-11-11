@@ -18,7 +18,7 @@ Paya moves money between **NEAR** and **your bank account** in five African coun
 
 ## Where it works
 
-Nigeria (NGN), Ghana (GHS), Kenya (KES), Tanzania (TZS) and South Africa (ZAR). US dollar payouts are coming soon. See [Supported countries](/docs/supported-countries).
+Nigeria (NGN) today, with Ghana, Kenya, Tanzania, South Africa and US dollars coming soon. See [Supported countries](/docs/supported-countries).
 
 ## What makes it simple
 

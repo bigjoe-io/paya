@@ -16,7 +16,7 @@ export default function DocsHome() {
       <p className="text-sm font-medium text-muted-foreground">Overview</p>
       <h1 className="mt-2 text-4xl font-semibold tracking-tight text-balance sm:text-5xl">Paya docs</h1>
       <p className="mt-4 max-w-2xl text-lg leading-relaxed text-foreground/75 text-pretty">
-        Paya turns NEAR into money in your bank account, and bank transfers into NEAR, in Nigeria, Ghana, Kenya, Tanzania and South Africa.
+        Paya turns NEAR into money in your bank account, and bank transfers into NEAR. Live in Nigeria, with more countries coming soon.
         Everything you need to use it, in plain language.
       </p>
 

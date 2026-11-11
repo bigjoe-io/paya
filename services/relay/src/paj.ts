@@ -210,3 +210,140 @@ export const paj = {
   transaction: (token: string, id: string) =>
     call<{ id: string; status: PajStatus; signature?: string; fiatAmount?: number }>(`/pub/transactions/${id}`, { token }),
 };
+
+/* =====================================================================
+ * PAJ public API v2 — https://docs.paj.cash
+ * Every call is authenticated with Paya's business key (x-api-key). No user
+ * session is involved, so cash-outs and purchases never wait for a user to
+ * re-verify their email. (The v1 email-code endpoints above are used only to
+ * sign people in to Paya.)
+ * ===================================================================== */
+
+export type PajV2Status = "INIT" | "PROCESSING" | "COMPLETED" | "ERROR" | "PAID"; // PAID: older orders
+export type PajV2Tx = {
+  id: string;
+  status: PajV2Status;
+  address: string; // offramp: where to send the token
+  signature: string | null; // on-chain transaction, once there is one
+  mint: string;
+  currency: string;
+  amount: number; // token amount
+  usdcAmount: number;
+  fiatAmount: number;
+  rate: number;
+  recipient: string;
+  accountNumber: string; // onramp: account to pay into · offramp: payout account
+  accountName: string;
+  bank: string;
+  fee: number;
+};
+export type PajV2Bank = { id: string; code: string; name: string; country: string; logo?: string };
+
+/** Errors from v2 are about Paya's integration, never about the user's sign-in. */
+export class PajV2Error extends Error {
+  constructor(
+    message: string,
+    public status: number,
+  ) {
+    super(message);
+  }
+}
+
+async function v2<T>(path: string, init: { method?: string; body?: unknown; timeoutMs?: number } = {}) {
+  const r = await fetch(`${config.PAJ_API_URL}/pub/v2${path}`, {
+    method: init.method ?? "GET",
+    headers: { "Content-Type": "application/json", "x-api-key": config.PAJ_API_KEY },
+    body: init.body ? JSON.stringify(init.body) : undefined,
+    signal: AbortSignal.timeout(init.timeoutMs ?? 30_000),
+  });
+  const j = (await r.json().catch(() => ({}))) as T & { message?: string | string[] };
+  if (!r.ok) {
+    const m = Array.isArray(j.message) ? j.message.join("; ") : j.message;
+    if (r.status === 401) throw new PajV2Error("Payment partner rejected Paya's API key", 502);
+    throw new PajV2Error(m ?? `PAJ ${path} failed (${r.status})`, r.status >= 500 ? 502 : r.status);
+  }
+  return j as T;
+}
+
+const cache = new Map<string, { at: number; v: unknown }>();
+async function cached<T>(key: string, ms: number, fn: () => Promise<T>): Promise<T> {
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.at < ms) return hit.v as T;
+  const v = await fn();
+  cache.set(key, { at: Date.now(), v });
+  return v;
+}
+
+export const pajV2 = {
+  /** Local currency per 1 USD. Paya's business fee (if any is set at PAJ) is already inside. */
+  rates: (currency: string) =>
+    cached(`rate:${currency}`, 60_000, async () => {
+      const r = await v2<{ onRampRate: { rate: number }; offRampRate: { rate: number } }>(`/rate?currency=${currency}`);
+      return { buy: r.onRampRate.rate, sell: r.offRampRate.rate };
+    }),
+
+  /** Currencies PAJ has switched on right now. */
+  activeCurrencies: () =>
+    cached("currencies", 10 * 60_000, async () => {
+      const list = await v2<{ currency: string; isActive: boolean }[]>("/currencies");
+      return new Set(list.filter((c) => c.isActive).map((c) => c.currency));
+    }),
+
+  banks: () => cached("banks", 60 * 60_000, () => v2<PajV2Bank[]>("/bank")),
+
+  /** Accepts a bank code ("000013") or an older bank id; returns the code. */
+  async bankCode(idOrCode: string) {
+    if (/^\d{3,8}$/.test(idOrCode)) return idOrCode;
+    const b = (await pajV2.banks()).find((x) => x.id === idOrCode || x.code === idOrCode);
+    if (!b) throw new PajV2Error("Unknown bank", 400);
+    return b.code;
+  },
+
+  /**
+   * Confirms the account with the bank and registers it (idempotent). The name
+   * comes from the bank. `address` is a permanent Solana address that pays it.
+   */
+  registerBank: (bankCode: string, accountNumber: string) =>
+    v2<{ id: string; accountName: string; accountNumber: string; bank: string; address: string; evmAddress?: string }>("/bank-account", {
+      method: "POST",
+      body: { bankCode, accountNumber },
+      timeoutMs: 45_000,
+    }),
+
+  /** Buy: the user pays `fiat` into the returned account; PAJ sends USDC on Solana to `recipient`. */
+  createOnramp(p: { fiat: number; currency: string; recipient: string; reference: string }) {
+    log("paj", `v2 onramp ${p.fiat} ${p.currency} → USDC to ${p.recipient} (${p.reference})`);
+    return v2<PajV2Tx>("/onramp", {
+      method: "POST",
+      body: {
+        fiatAmount: p.fiat,
+        currency: p.currency,
+        recipient: p.recipient,
+        mint: USDC_SOLANA_MINT,
+        chain: "SOLANA",
+        userExternalId: p.reference,
+        ...(config.PUBLIC_URL ? { webhookURL: `${config.PUBLIC_URL}/webhooks/paj` } : {}),
+      },
+    });
+  },
+
+  /** Cash-out: send exactly `amount` USDC to the returned `address`; PAJ pays the bank. */
+  createOfframp(p: { bankCode: string; accountNumber: string; currency: string; usdc: number; reference: string }) {
+    log("paj", `v2 offramp ${p.usdc} USDC → ${p.currency} (${p.reference})`);
+    return v2<PajV2Tx>("/offramp", {
+      method: "POST",
+      body: {
+        bankCode: p.bankCode,
+        accountNumber: p.accountNumber,
+        currency: p.currency,
+        amount: p.usdc,
+        mint: USDC_SOLANA_MINT,
+        chain: "SOLANA",
+        description: `Paya ${p.reference}`,
+        ...(config.PUBLIC_URL ? { webhookURL: `${config.PUBLIC_URL}/webhooks/paj` } : {}),
+      },
+    });
+  },
+
+  transaction: (id: string) => v2<PajV2Tx>(`/transaction/${encodeURIComponent(id)}`),
+};

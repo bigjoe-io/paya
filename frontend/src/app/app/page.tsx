@@ -137,7 +137,7 @@ export default function SwapPage() {
 function Welcome({ onStart }: { onStart: () => void }) {
   const steps = [
     { icon: Mail, title: "Sign in with your email", body: "Your account and your own NEAR address are created instantly." },
-    { icon: Landmark, title: "Link your bank account", body: "Nigeria, Ghana, Kenya, Tanzania or South Africa." },
+    { icon: Landmark, title: "Link your bank account", body: "Nigeria today, with more countries coming soon." },
     { icon: Zap, title: "Send NEAR, get paid", body: "NEAR sent to your address lands in your bank automatically." },
   ];
   return (

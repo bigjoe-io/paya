@@ -1,6 +1,5 @@
 import { config } from "./config.js";
-import { paj } from "./paj.js";
-import { indicativeSellRate } from "./fx.js";
+import { pajV2 } from "./paj.js";
 import { quote as rubicQuote, spareCapacity, TOKENS } from "./rubic.js";
 
 /**
@@ -47,7 +46,7 @@ export async function minCashoutNear() {
 export type Preview = {
   nearIn: number;
   usdcOut: number; // what the exchange provider delivers
-  usdcPayout: number; // what PAJ pays out on
+  usdcPayout: number; // what PAJ pays out on (after Paya's fee, which Paya keeps)
   feeUsdc: number;
   feePercent: number;
   rate: number; // local currency per USDC
@@ -60,25 +59,17 @@ export type Preview = {
   provider: string;
 };
 
-export async function preview(nearIn: number, currency: string, _refundTo: string, token?: string): Promise<Preview> {
+export async function preview(nearIn: number, currency: string, _refundTo?: string, _token?: string): Promise<Preview> {
+  if (!(await pajV2.activeCurrencies()).has(currency)) throw new Error(`Cash-outs in ${currency} are coming soon`);
   if (nearIn < MIN_SELL_NEAR) throw new Error(`Minimum cash-out is ${MIN_SELL_NEAR} NEAR`);
   const q = await sellQuote(nearIn);
   const fee = round2((q.usdc * config.FEE_PERCENT) / 100);
   const usdc = round2(q.usdc - fee);
   if (usdc < MIN_CASHOUT_USDC) throw new Error(`Minimum cash-out is about ${MIN_CASHOUT_USDC} USDC worth of NEAR`);
 
-  let fiatOut: number;
-  let priceSource: Preview["priceSource"];
-  if (token) {
-    fiatOut = Math.floor((await paj.offrampValue(token, usdc, currency)).fiatAmount);
-    priceSource = "account";
-  } else if (currency === "NGN") {
-    fiatOut = Math.floor(usdc * (await paj.publicNgnRate()));
-    priceSource = "public";
-  } else {
-    fiatOut = Math.floor(usdc * (await indicativeSellRate(currency)));
-    priceSource = "public";
-  }
+  // PAJ's live cash-out rate for Paya's business (its fee, if any, is already inside).
+  const fiatOut = Math.floor(usdc * (await pajV2.rates(currency)).sell);
+  const priceSource: Preview["priceSource"] = "account";
   return {
     nearIn,
     usdcOut: q.usdc,

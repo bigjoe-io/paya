@@ -4,10 +4,10 @@ import { z } from "zod";
 import { config } from "./config.js";
 import { swaps, users, type Swap, type User } from "./db.js";
 import { log } from "./log.js";
-import { COUNTRY, paj, PajError } from "./paj.js";
+import { COUNTRY, paj, PajError, PajV2Error, pajV2 } from "./paj.js";
 import { minCashoutNear, preview } from "./quote.js";
 import { applyPayout } from "./swaps.js";
-import { BUY_CURRENCIES, cancelBuy, createBuy, markSent, minBuy, previewBuy } from "./buys.js";
+import { activeBuyCurrencies, cancelBuy, createBuy, markSent, minBuy, previewBuy } from "./buys.js";
 import { buys, type Buy } from "./db.js";
 import { admin } from "./admin.js";
 import { audit, last4 } from "./audit.js";
@@ -47,6 +47,7 @@ app.onError((e, c) => {
     const first = e.issues[0];
     return c.json({ error: `${first.path.join(".") || "request"}: ${first.message}` }, 400);
   }
+  if (e instanceof PajV2Error) return c.json({ error: e.status >= 500 ? "Our payment partner is unavailable right now. Please try again in a moment." : e.message }, e.status >= 500 ? 502 : 400);
   if (e instanceof PajError && e.status === 401) {
     const fresh = e.message === "Sign in first";
     return c.json({ error: fresh ? "Sign in with your email first." : "Your session expired. Sign in again.", code: "SIGN_IN" }, 401);
@@ -118,12 +119,14 @@ app.get("/health", (c) => c.json({ ok: true, demo: config.demo, feePercent: conf
 /** Shown in the app but not payable yet. */
 const COMING_SOON = [{ code: "USD", name: "US Dollar", symbol: "$", flag: "🇺🇸", country: "United States", comingSoon: true }];
 
-app.get("/currencies", (c) =>
-  c.json([
-    ...Object.entries(COUNTRY).map(([code, x]) => ({ code, name: x.country, symbol: x.symbol, flag: x.flag, country: x.country })),
+/** Countries Paya supports. Ones PAJ hasn't switched on yet show as "coming soon". */
+app.get("/currencies", async (c) => {
+  const live = await pajV2.activeCurrencies().catch(() => new Set(["NGN"]));
+  return c.json([
+    ...Object.entries(COUNTRY).map(([code, x]) => ({ code, name: x.country, symbol: x.symbol, flag: x.flag, country: x.country, ...(live.has(code) ? {} : { comingSoon: true }) })),
     ...COMING_SOON,
-  ]),
-);
+  ]);
+});
 
 let nearPrice: { at: number; usd: number } | null = null;
 /** NEAR/USD: CoinGecko, falling back to Gate's order book. */
@@ -142,7 +145,7 @@ app.get("/prices", async (c) => {
   if (!nearPrice || Date.now() - nearPrice.at > 60_000) {
     nearPrice = { at: Date.now(), usd: await nearUsd() };
   }
-  const ngnPerUsd = await paj.publicNgnRate().catch(() => null);
+  const ngnPerUsd = await pajV2.rates("NGN").then((r) => r.sell).catch(() => null);
   return c.json({ nearUsd: nearPrice.usd, ngnPerUsd });
 });
 
@@ -185,30 +188,41 @@ app.post("/auth/verify", async (c) => {
 
 /* ---------- banks (user session) ---------- */
 
+/** Banks for a country (PAJ v2). The bank code is used as the id everywhere. */
 app.get("/banks", async (c) => {
+  me(c, true);
   const cur = currency.parse(c.req.query("currency") ?? "NGN");
-  const all = await paj.banks(requirePaj(me(c, true)));
   const iso = COUNTRY[cur].iso;
-  // PAJ may label a bank's country as "NG", "Nigeria" or "NGN".
   const match = new Set([iso, COUNTRY[cur].country, cur].map((x) => x.toLowerCase()));
-  const inCountry = all.filter((b) => !b.country || match.has(b.country.toLowerCase()));
-  return c.json(inCountry.sort((a, b) => a.name.localeCompare(b.name)));
+  const list = (await pajV2.banks())
+    .filter((b) => !b.country || match.has(b.country.toLowerCase()))
+    .map((b) => ({ id: b.code, code: b.code, name: b.name, logo: b.logo, country: b.country }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return c.json(list);
 });
 
+/** Confirm an account with the bank (registers it with PAJ; idempotent). The name comes from the bank. */
 app.post("/bank-accounts/resolve", async (c) => {
+  me(c, true);
   const b = z.object({ bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) }).parse(await c.req.json());
-  const r = await paj.resolveAccount(requirePaj(me(c, true)), b.bankId, b.accountNumber);
+  const r = await pajV2.registerBank(await pajV2.bankCode(b.bankId), b.accountNumber);
   return c.json({ accountName: r.accountName, accountNumber: r.accountNumber, bank: r.bank });
 });
 
-app.get("/bank-accounts", async (c) => c.json(await paj.savedAccounts(requirePaj(me(c, true)))));
+/** The account's linked bank, in the "saved accounts" shape the app's picker uses. */
+app.get("/bank-accounts", async (c) => {
+  const u = me(c, true);
+  if (!u.bank_id || !u.account_number) return c.json([]);
+  return c.json([{ id: `linked_${u.id}`, accountName: u.account_name, accountNumber: u.account_number, bank: await pajV2.bankCode(u.bank_id).catch(() => u.bank_id) }]);
+});
 
 app.post("/bank-accounts", async (c) => {
   const b = z.object({ bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) }).parse(await c.req.json());
   const u = me(c, true);
-  const saved = await paj.saveAccount(requirePaj(u), b.bankId, b.accountNumber);
-  audit("bank_account_saved", u.email, { bankId: b.bankId, account: last4(b.accountNumber), name: saved.accountName });
-  return c.json(saved);
+  const code = await pajV2.bankCode(b.bankId);
+  const r = await pajV2.registerBank(code, b.accountNumber);
+  audit("bank_account_saved", u.email, { bank: r.bank, account: last4(b.accountNumber), name: r.accountName });
+  return c.json({ id: `reg_${r.id}`, accountName: r.accountName, accountNumber: r.accountNumber, bank: code });
 });
 
 app.post("/kyc", async (c) => {
@@ -303,7 +317,7 @@ app.get("/swaps/:id", (c) => {
 /* ---------- buy: fiat → NEAR ---------- */
 
 app.get("/buy/currencies", async (c) =>
-  c.json(await Promise.all(BUY_CURRENCIES.map(async (code) => ({ code, min: await minBuy(code).catch(() => 0) })))),
+  c.json(await Promise.all((await activeBuyCurrencies()).map(async (code) => ({ code, min: await minBuy(code).catch(() => 0) })))),
 );
 
 app.get("/buy/quote", async (c) => {
@@ -326,7 +340,6 @@ app.post("/buys", async (c) => {
     })
     .parse(await c.req.json());
   let u = me(c, true);
-  const token = requirePaj(u);
   // Bought NEAR should stay in the balance, not be sold straight back.
   if (u.auto_cashout) {
     u = setAuto(u, false);
@@ -334,7 +347,7 @@ app.post("/buys", async (c) => {
   }
   let buy;
   try {
-    buy = await createBuy({ accountId: u.address, fiat: b.fiat, currency: b.currency }, token);
+    buy = await createBuy({ accountId: u.address, fiat: b.fiat, currency: b.currency });
   } catch (e) {
     audit("buy_rejected", u.email, { fiat: b.fiat, currency: b.currency, error: (e as Error).message });
     throw e;
@@ -380,14 +393,13 @@ app.route("/admin", admin);
 /* ---------- PAJ webhook ---------- */
 
 // PAJ webhooks aren't signed, so the payload is only a hint: re-read the order with the stored session.
+// The payload is only a hint: the order is re-read from PAJ before anything changes.
 app.post("/webhooks/paj", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { id?: string };
   const s = body.id ? swaps.byPajOrderId(body.id) : undefined;
-  const owner = s ? users.byAddress(s.account_id) : undefined;
-  const token = (owner && pajTokenOf(owner)) || s?.paj_token;
-  if (s && token && s.paj_order_id) {
-    const t = await paj.transaction(token, s.paj_order_id);
-    applyPayout(s, t.status, t.signature);
+  if (s?.paj_order_id && s.status === "paying") {
+    const t = await pajV2.transaction(s.paj_order_id);
+    applyPayout(s, t.status, t.signature ?? undefined);
     log("webhook", `${s.id} ${t.status}`);
   }
   return c.text("ok");

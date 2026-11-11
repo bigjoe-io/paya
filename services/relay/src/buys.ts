@@ -1,10 +1,8 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
 import { buys, users, type Buy, type BuyStatus } from "./db.js";
-import { pajTokenOf } from "./accounts.js";
 import { log, warn } from "./log.js";
-import { COUNTRY, paj } from "./paj.js";
-import { indicativeBuyRate } from "./fx.js";
+import { COUNTRY, pajV2 } from "./paj.js";
 import { round2 } from "./quote.js";
 import * as rubic from "./rubic.js";
 import { fromUnits, sendUsdc, solBalance, toUnits, treasuryAddress, usdcBalance, usdcReceivedIn } from "./solana.js";
@@ -19,7 +17,12 @@ import { decToUnits } from "./swaps.js";
  * We act on the USDC that actually arrived. If a provider can't complete, it
  * refunds the USDC to Paya's wallet and we retry with a different provider.
  */
+/** Countries Paya supports; which are live right now comes from PAJ (activeBuyCurrencies). */
 export const BUY_CURRENCIES = Object.keys(COUNTRY);
+export async function activeBuyCurrencies() {
+  const live = await pajV2.activeCurrencies();
+  return BUY_CURRENCIES.filter((c) => live.has(c));
+}
 
 /** Smallest purchase: providers' fixed costs make anything below ~5 USDC poor value. */
 const MIN_BUY_USDC = 5;
@@ -38,7 +41,7 @@ export function roundUpNice(x: number) {
 }
 
 async function buyRate(currency: string) {
-  return currency === "NGN" ? paj.publicNgnBuyRate() : indicativeBuyRate(currency);
+  return (await pajV2.rates(currency)).buy;
 }
 
 const minCache = new Map<string, { at: number; min: number }>();
@@ -68,10 +71,8 @@ export type BuyPreview = {
   provider: string;
 };
 
-async function usdcFor(fiat: number, currency: string, token?: string) {
-  if (token) return { usdc: (await paj.onrampValue(token, fiat, currency)).amount, source: "account" as const };
-  if (currency === "NGN") return { usdc: fiat / (await paj.publicNgnBuyRate()), source: "public" as const };
-  return { usdc: fiat / (await indicativeBuyRate(currency)), source: "public" as const };
+async function usdcFor(fiat: number, currency: string, _token?: string) {
+  return { usdc: fiat / (await buyRate(currency)), source: "account" as const };
 }
 
 /* NEAR for X USDC: cached Rubic quotes; spare-capacity only, else scale the nearest recent quote. */
@@ -119,34 +120,28 @@ export async function previewBuy(fiat: number, currency: string, _account: strin
 }
 
 export async function checkBuyInput(fiat: number, currency: string) {
-  if (!BUY_CURRENCIES.includes(currency)) throw new Error(`Buying with ${currency} is coming soon`);
+  if (!(await activeBuyCurrencies()).includes(currency)) throw new Error(`Buying with ${currency} is coming soon`);
   const min = await minBuy(currency);
   if (fiat < min) throw new Error(`Minimum buy is ${min.toLocaleString("en-US")} ${currency}`);
 }
 
 const yoctoOf = (near: number) => decToUnits(near.toFixed(6), 24).toString();
 
-export async function createBuy(p: { accountId: string; fiat: number; currency: string }, token: string) {
+export async function createBuy(p: { accountId: string; fiat: number; currency: string }) {
   if (config.demo) throw new Error("Purchases are switched off on this server (LIVE_ORDERS=false)");
   if ((await solBalance().catch(() => 0)) < 0.004) throw new Error("Purchases are paused for a few minutes for maintenance. Please try again shortly.");
-  const est = await previewBuy(p.fiat, p.currency, p.accountId, token);
+  const est = await previewBuy(p.fiat, p.currency, p.accountId);
   const id = `buy_${crypto.randomBytes(6).toString("hex")}`;
 
   // PAJ order: the user pays fiat to PAJ, PAJ sends USDC to Paya's Solana wallet.
-  const order = await paj.createOnramp(token, {
-    fiat: p.fiat,
-    currency: p.currency,
-    recipient: treasuryAddress(),
-    feeUsdc: est.feeUsdc,
-    reference: id,
-  });
+  const order = await pajV2.createOnramp({ fiat: p.fiat, currency: p.currency, recipient: treasuryAddress(), reference: id });
   buys.insert({
     id,
     account_id: p.accountId,
     currency: p.currency,
     fiat_amount: p.fiat,
     usdc_expected: order.amount,
-    fee_usdc: order.fee ?? est.feeUsdc,
+    fee_usdc: est.feeUsdc, // Paya's fee, kept from the USDC when it arrives
     rate: order.rate || est.rate,
     deadline: new Date(Date.now() + DEADLINE_MS).toISOString(),
     payment_status: null,
@@ -158,7 +153,7 @@ export async function createBuy(p: { accountId: string; fiat: number; currency: 
     near_expected: yoctoOf(est.nearOut),
     near_min: yoctoOf(est.nearMin),
     paj_order_id: order.id,
-    paj_token: token,
+    paj_token: null,
     deposit_address: null,
     status: "awaiting_payment",
     demo: 0,
@@ -213,10 +208,6 @@ export function startBuyWatcher() {
   }, config.POLL_MS);
 }
 
-const currentPajToken = (address: string) => {
-  const u = users.byAddress(address);
-  return u ? pajTokenOf(u) : null;
-};
 
 async function advance(b: Buy) {
   // 1. unpaid orders: close after the deadline / 2 h without "I've sent it"
@@ -232,9 +223,8 @@ async function advance(b: Buy) {
 
   // 2. has PAJ received the money and sent the USDC?
   if (b.status === "awaiting_payment" || b.status === "cancelled" || (b.status === "converting" && !b.paj_tx)) {
-    const token = currentPajToken(b.account_id) ?? b.paj_token;
-    if (!b.paj_order_id || !token) return;
-    const t = await paj.transaction(token, b.paj_order_id);
+    if (!b.paj_order_id) return;
+    const t = await pajV2.transaction(b.paj_order_id);
     if (t.status !== b.payment_status) {
       buys.update(b.id, { payment_status: t.status });
       buys.event(b.id, "payment_status", { status: t.status });
@@ -243,7 +233,9 @@ async function advance(b: Buy) {
       buys.update(b.id, { paj_tx: t.signature });
       b.paj_tx = t.signature;
     }
-    if ((t.status === "PAID" || t.status === "COMPLETED") && b.status !== "converting") set(b, "converting", { error: null });
+    if (t.status === "ERROR") return set(b, "failed", { error: "Our payment partner couldn't complete this purchase. Contact support with your Support ID." });
+    // Paid (PROCESSING), even if the order had been cancelled: deliver it.
+    if ((t.status === "PROCESSING" || t.status === "PAID" || t.status === "COMPLETED") && b.status !== "converting") set(b, "converting", { error: null });
     if (b.status !== "converting") return;
   }
 
@@ -266,7 +258,9 @@ async function advance(b: Buy) {
     if (tried.length >= MAX_ATTEMPTS) {
       return set(b, "failed", { error: "We couldn't complete this purchase. Your money is safe with Paya; our team will finish it or refund you." });
     }
-    const usdc = Number(b.usdc_received);
+    const received = Number(b.usdc_received);
+    // Paya's fee stays in Paya's wallet; the rest becomes the user's NEAR.
+    const usdc = round2(received - (received * config.FEE_PERCENT) / 100);
     if ((await usdcBalance()) < toUnits(usdc)) throw new Error("Waiting for the USDC (or a provider refund) to reach Paya's wallet");
     if ((await solBalance()) < 0.003) throw new Error("Paya's Solana wallet is low on SOL for fees");
     const route = await rubic.lockBestRoute({
