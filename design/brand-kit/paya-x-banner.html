@@ -1,0 +1,76 @@
+<!doctype html><html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Geist+Mono:wght@500;600&display=swap" rel="stylesheet">
+<style>
+*{margin:0;box-sizing:border-box}
+html{zoom:2}
+body{width:1500px;height:500px;overflow:hidden;font-family:Inter,sans-serif;background:#050505;position:relative;color:#fff}
+/* soft light sweep like studio lighting */
+.streak{position:absolute;left:-200px;top:250px;width:1300px;height:170px;transform:rotate(-14deg);
+  background:radial-gradient(ellipse at 40% 50%, rgba(220,225,235,.38), rgba(150,155,170,.12) 45%, transparent 72%);filter:blur(26px)}
+.sweep{position:absolute;inset:0;background:
+  radial-gradient(ellipse 620px 140px at 330px 330px, rgba(255,255,255,.20), transparent 70%),
+  radial-gradient(ellipse 900px 220px at 300px 420px, rgba(160,170,190,.16), transparent 70%),
+  radial-gradient(ellipse 500px 500px at 1050px 260px, rgba(255,255,255,.05), transparent 70%),
+  linear-gradient(180deg,#000 0%,#0b0b0c 100%);
+  transform:rotate(-12deg) scale(1.3);}
+.grain{position:absolute;inset:0;opacity:.08;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence baseFrequency='.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='.6'/%3E%3C/svg%3E")}
+h1{position:absolute;left:58px;top:58px;font-size:66px;line-height:1.02;font-weight:600;letter-spacing:-.045em}
+h1 span{color:#9ca3af}
+.sub{position:absolute;left:62px;top:212px;font-size:19px;color:#a1a1aa;letter-spacing:-.01em;display:flex;align-items:center;gap:10px}
+.sub b{color:#fff;font-weight:500}
+.brand{position:absolute;right:56px;bottom:40px;display:flex;align-items:center;gap:10px;font-weight:600;font-size:22px;letter-spacing:-.03em;opacity:.9}
+.brand svg{width:26px;height:26px}
+/* phone */
+.stage{position:absolute;left:830px;top:58px;perspective:1800px}
+.phone{width:340px;height:700px;border-radius:58px;background:linear-gradient(145deg,#e9eaec,#9fa3a9 40%,#f4f4f5 60%,#7d8188);padding:7px;
+  transform:rotateX(8deg) rotateY(-10deg) rotateZ(-11deg);transform-origin:50% 0;
+  box-shadow:-40px 60px 90px rgba(0,0,0,.65), inset 0 0 0 1px rgba(255,255,255,.4)}
+.bezel{width:100%;height:100%;border-radius:52px;background:#0a0a0a;padding:9px}
+.screen{width:100%;height:100%;border-radius:44px;background:#fff;color:#0a0a0a;overflow:hidden;position:relative;padding:16px 18px}
+.island{position:absolute;left:50%;top:11px;transform:translateX(-50%);width:104px;height:30px;border-radius:20px;background:#000}
+.status{display:flex;justify-content:space-between;font-size:14px;font-weight:600;padding:2px 10px 0}
+.top{display:flex;align-items:center;justify-content:space-between;margin-top:26px}
+.top .l{display:flex;align-items:center;gap:7px;font-weight:600;font-size:17px;letter-spacing:-.03em}
+.top .l svg{width:20px;height:20px}
+.pill{font-size:11px;border:1px solid #e5e7eb;border-radius:99px;padding:4px 9px;color:#52525b;font-family:'Geist Mono'}
+.tabs{margin-top:14px;display:grid;grid-template-columns:repeat(3,1fr);background:#f4f4f5;border-radius:12px;padding:3px;font-size:12px;font-weight:500;text-align:center}
+.tabs div{padding:7px 0;color:#71717a;border-radius:9px}.tabs .on{background:#fff;color:#0a0a0a;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.box{margin-top:10px;border:1px solid #ececee;border-radius:18px;padding:12px 14px}
+.box.g{background:#f7f7f8}
+.lbl{font-size:11px;color:#71717a}
+.row{display:flex;align-items:center;justify-content:space-between;margin-top:4px}
+.amt{font-family:'Geist Mono';font-weight:600;font-size:28px;letter-spacing:-.04em}
+.chip{display:flex;align-items:center;gap:5px;font-size:12px;font-weight:600;border:1px solid #e5e7eb;border-radius:99px;padding:5px 9px;background:#fff}
+.near{width:16px;height:16px;border-radius:50%;background:#000;color:#fff;font-size:9px;display:flex;align-items:center;justify-content:center;font-weight:700}
+.arrow{width:30px;height:30px;margin:-8px auto -8px;position:relative;z-index:2;border:1px solid #e5e7eb;background:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px}
+.bank{margin-top:8px;display:flex;align-items:center;gap:6px;font-size:11px;color:#52525b}
+.bank i{width:16px;height:16px;border-radius:50%;background:#e4e4e7;display:inline-block}
+.rate{margin-top:10px;font-family:'Geist Mono';font-size:11px;color:#71717a;padding:0 2px}
+.cta{margin-top:10px;background:#0a0a0a;color:#fff;border-radius:16px;text-align:center;font-size:14px;font-weight:600;padding:14px}
+/* paid toast floating off the phone */
+.toast{position:absolute;left:668px;top:350px;background:rgba(255,255,255,.96);color:#0a0a0a;border-radius:18px;padding:12px 16px;display:flex;gap:11px;align-items:center;
+  box-shadow:0 24px 50px rgba(0,0,0,.5);transform:rotate(-4deg)}
+.toast .ok{width:30px;height:30px;border-radius:50%;background:#16a34a;color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:700}
+.toast b{display:block;font-size:13px}.toast small{font-size:11px;color:#71717a;font-family:'Geist Mono'}
+</style></head><body>
+<div class="sweep"></div><div class="streak"></div><div class="grain"></div>
+<h1>Your crypto,<br><span>made spendable.</span></h1>
+<p class="sub">NEAR <b>→</b> your bank account, in one click.</p>
+
+<div class="stage"><div class="phone"><div class="bezel"><div class="screen">
+  <div class="island"></div>
+  <div class="status"><span>9:41</span><span>●●● ▮</span></div>
+  <div class="top"><div class="l"><svg viewBox="0 0 100 100"><circle cx="32" cy="50" r="30"/><path d="M68 20a30 30 0 0 1 0 60z"/></svg>Paya</div><span class="pill">alex.near</span></div>
+  <div class="tabs"><div>Buy</div><div class="on">Sell</div><div>Bridge</div></div>
+  <div class="box"><div class="lbl">You pay</div><div class="row"><span class="amt">250</span><span class="chip"><span class="near">N</span>NEAR</span></div></div>
+  <div class="arrow">↓</div>
+  <div class="box g"><div class="lbl">You receive</div><div class="row"><span class="amt">₦1,312,500</span><span class="chip">🇳🇬 NGN</span></div>
+    <div class="bank"><i></i>Adaeze Okafor · GTBank ••4821</div></div>
+  <div class="rate">1 NEAR ≈ ₦5,250 · arrives ~2 min</div>
+  <div class="cta">Swap to NGN</div>
+</div></div></div></div>
+
+<div class="toast"><span class="ok">✓</span><span><b>₦1,312,500 sent</b><small>GTBank ••4821 · just now</small></span></div>
+
+<div class="brand"><svg viewBox="0 0 100 100" fill="#fff"><circle cx="32" cy="50" r="30"/><path d="M68 20a30 30 0 0 1 0 60z"/></svg>Paya</div>
+</body></html>
