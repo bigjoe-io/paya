@@ -1,5 +1,5 @@
 import { LogoMark } from "@/components/logo";
-import { ButtonLink } from "@/components/ui/button";
+import { WaitlistButton } from "@/components/landing/waitlist";
 
 export function FinalCta() {
   return (
@@ -16,9 +16,7 @@ export function FinalCta() {
         <p className="mt-4 text-lg text-muted-foreground text-pretty">
           One click from NEAR to cash in your bank account.
         </p>
-        <ButtonLink href="/app" className="mt-8">
-          Open app
-        </ButtonLink>
+        <WaitlistButton className="mt-8" source="cta" />
       </div>
     </section>
   );

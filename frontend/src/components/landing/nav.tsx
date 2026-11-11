@@ -1,13 +1,12 @@
 import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { ButtonLink } from "@/components/ui/button";
+import { WaitlistButton } from "@/components/landing/waitlist";
 
 const links = [
   { href: "#features", label: "Features" },
   { href: "#countries", label: "Countries" },
   { href: "#how-it-works", label: "How it works" },
   { href: "#security", label: "Security" },
-  { href: "/docs", label: "Docs" },
 ];
 
 export function Nav() {
@@ -34,9 +33,7 @@ export function Nav() {
           ))}
         </ul>
 
-        <ButtonLink href="/app" className="min-h-10 px-5">
-          Open app
-        </ButtonLink>
+        <WaitlistButton className="min-h-10 px-5" source="nav" />
       </nav>
     </header>
   );

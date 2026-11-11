@@ -26,7 +26,7 @@ export function Recheck({ id }: { id: string }) {
         className="inline-flex min-h-9 items-center gap-2 rounded-lg border border-neutral-300 bg-white px-3 text-sm font-medium outline-none hover:bg-neutral-50 focus-visible:ring-2 focus-visible:ring-blue-600 disabled:opacity-60"
       >
         <RefreshCw className={`size-4 ${pending ? "motion-safe:animate-spin" : ""}`} aria-hidden="true" />
-        {pending ? "Checking…" : "Re-check with NEAR Intents"}
+        {pending ? "Checking…" : "Re-check with the exchange provider"}
       </button>
       <div aria-live="polite" className="mt-2 text-sm">
         {res?.error && <p className="text-red-700">{res.error}</p>}

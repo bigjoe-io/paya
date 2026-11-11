@@ -13,6 +13,9 @@ import { admin } from "./admin.js";
 import { audit, last4 } from "./audit.js";
 import { accountView, cashOut, pajTokenOf, requirePaj, setAuto, setBank, signIn, withdraw } from "./accounts.js";
 import { createSession, readSession } from "./secrets.js";
+import { redeem, verifyAccess } from "./access.js";
+import { waitlist } from "./db.js";
+import crypto from "node:crypto";
 import { accountExists, fundFromTreasury, toYocto } from "./near.js";
 
 export const app = new Hono();
@@ -22,10 +25,22 @@ export const app = new Hono();
 const LOCALHOST = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
 const publicCors = cors({
     origin: (origin) => (config.corsOrigins.includes(origin) || (config.demo && LOCALHOST.test(origin)) ? origin : null),
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Paya-Access"],
 });
 // No CORS on /admin: it's server-to-server only, so browsers can never read it.
 app.use("*", (c, next) => (c.req.path.startsWith("/admin") ? next() : publicCors(c, next)));
+
+/**
+ * Private testing: everything the app uses needs a tester access token
+ * (X-Paya-Access). Open to everyone: health, reference data, the waitlist,
+ * redeeming a code, PAJ webhooks and the admin API (which has its own token).
+ */
+const OPEN = [/^\/health$/, /^\/waitlist$/, /^\/access\//, /^\/webhooks\//, /^\/admin(\/|$)/, /^\/currencies$/, /^\/prices$/];
+app.use("*", async (c, next) => {
+  if (c.req.method === "OPTIONS" || OPEN.some((r) => r.test(c.req.path))) return next();
+  if (!verifyAccess(c.req.header("x-paya-access"))) return c.json({ error: "Paya is in private testing. Join the waitlist at usepaya.xyz.", code: "NO_ACCESS" }, 403);
+  return next();
+});
 
 app.onError((e, c) => {
   if (e instanceof z.ZodError) {
@@ -63,6 +78,36 @@ const pajOf = (c: Context) => {
   const u = me(c);
   return u ? (pajTokenOf(u) ?? undefined) : undefined;
 };
+
+/* ---------- private testing + waitlist ---------- */
+
+app.post("/access/redeem", async (c) => {
+  const { code } = z.object({ code: z.string().min(4).max(40) }).parse(await c.req.json());
+  await new Promise((r) => setTimeout(r, 400)); // slow down guessing
+  const r = redeem(code);
+  audit(r ? "access_redeemed" : "access_refused", undefined, r ? { label: r.label } : {});
+  if (!r) return c.json({ error: "That code isn't valid or has been used up." }, 400);
+  return c.json(r);
+});
+
+app.get("/access/check", (c) => c.json({ ok: verifyAccess(c.req.header("x-paya-access")) }));
+
+const waitlistHits = new Map<string, number[]>(); // per-IP throttle, memory only
+app.post("/waitlist", async (c) => {
+  const ip = c.req.header("x-forwarded-for")?.split(",")[0].trim() ?? "unknown";
+  const now = Date.now();
+  const hits = (waitlistHits.get(ip) ?? []).filter((t) => now - t < 60 * 60_000);
+  if (hits.length >= 10) return c.json({ error: "Too many tries. Please try again later." }, 429);
+  waitlistHits.set(ip, [...hits, now]);
+  const b = z
+    .object({ email: z.string().email("Enter a valid email").max(200).transform((s) => s.trim().toLowerCase()), source: z.string().max(40).optional() })
+    .parse(await c.req.json());
+  if (!waitlist.find((w) => w.email === b.email)) {
+    waitlist.insert({ id: `wl_${crypto.randomBytes(6).toString("hex")}`, email: b.email, source: b.source ?? null });
+    log("waitlist", `+1 (${waitlist.all().length} total)`);
+  }
+  return c.json({ ok: true }); // same answer either way: never reveal who already signed up
+});
 
 /* ---------- reference ---------- */
 

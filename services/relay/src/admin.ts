@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { Hono } from "hono";
 import { readAudit } from "./audit.js";
 import { config } from "./config.js";
-import { buys, swaps, users, type Buy, type Swap, type User } from "./db.js";
+import { accessCodes, buys, swaps, users, waitlist, type Buy, type Swap, type User } from "./db.js";
+import { accessEnabled, createCode } from "./access.js";
 import { balances, toNear } from "./near.js";
 import { paj } from "./paj.js";
 import { pajTokenOf } from "./accounts.js";
@@ -246,6 +247,30 @@ admin.post("/import", async (c) => {
     buys: buys.importRows(body.buys ?? []),
   };
   return c.json({ imported: result, totals: { users: users.all().length, swaps: swaps.all().length, buys: buys.all().length } });
+});
+
+/* ---------- waitlist + tester access ---------- */
+
+admin.get("/waitlist", (c) => c.json(waitlist.all().map(({ events: _e, ...w }) => w)));
+
+admin.get("/access-codes", (c) =>
+  c.json({ enabled: accessEnabled(), codes: accessCodes.all().map(({ code_hash: _h, events: _e, ...a }) => a) }),
+);
+
+admin.post("/access-codes", async (c) => {
+  const b = (await c.req.json().catch(() => ({}))) as { label?: string; maxUses?: number | null; expiresDays?: number | null };
+  const label = String(b.label ?? "").trim().slice(0, 60) || "Tester";
+  const maxUses = b.maxUses && b.maxUses > 0 ? Math.floor(b.maxUses) : null;
+  const expiresDays = b.expiresDays && b.expiresDays > 0 ? Math.floor(b.expiresDays) : null;
+  return c.json(createCode({ label, maxUses, expiresDays })); // the only time the code is shown
+});
+
+admin.post("/access-codes/:id/revoke", (c) => {
+  const a = accessCodes.byId(c.req.param("id"));
+  if (!a) return c.json({ error: "Not found" }, 404);
+  accessCodes.update(a.id, { revoked: 1 });
+  accessCodes.event(a.id, "revoked");
+  return c.json({ ok: true });
 });
 
 admin.get("/audit", (c) => {

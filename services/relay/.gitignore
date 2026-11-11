@@ -9,3 +9,6 @@ paya-buys.json
 paya-buys.json.tmp
 paya-users.json
 paya-users.json.tmp
+paya-access.json
+paya-waitlist.json
+*.json.tmp

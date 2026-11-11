@@ -114,6 +114,17 @@ export type AdminBuy = {
   events?: SwapEvent[];
 };
 
+export type AccessCode = {
+  id: string;
+  label: string;
+  last4: string;
+  max_uses: number | null;
+  uses: number;
+  revoked: number;
+  expires_at: string | null;
+  created_at: string;
+};
+
 export type AuditEntry = { at: string; type: string; actor?: string; detail?: Record<string, unknown> };
 
 export class RelayError extends Error {}
@@ -151,6 +162,11 @@ export const relay = {
   buys: (q?: string) => call<AdminBuy[]>(`/buys${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   buy: (id: string) => call<AdminBuy>(`/buys/${encodeURIComponent(id)}`),
   treasury: () => call<{ solanaAddress: string; sol: number | null; usdc: number | null; lowSol: boolean }>("/treasury"),
+  waitlist: () => call<{ id: string; email: string; source: string | null; created_at: string }[]>("/waitlist"),
+  accessCodes: () => call<{ enabled: boolean; codes: AccessCode[] }>("/access-codes"),
+  createAccessCode: (b: { label: string; maxUses: number | null; expiresDays: number | null }) =>
+    call<{ id: string; code: string }>("/access-codes", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(b) }),
+  revokeAccessCode: (id: string) => call<{ ok: true }>(`/access-codes/${encodeURIComponent(id)}/revoke`, { method: "POST" }),
   users: (q?: string) => call<AdminUser[]>(`/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
   user: (id: string) => call<AdminUserDetail>(`/users/${encodeURIComponent(id)}`),
   audit: (q?: string) => call<AuditEntry[]>(`/audit?limit=500${q ? `&q=${encodeURIComponent(q)}` : ""}`),

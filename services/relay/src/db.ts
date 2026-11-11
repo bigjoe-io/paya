@@ -242,3 +242,30 @@ export const users = {
   byAddress: (address: string) => userStore.find((u) => u.address === address),
   nextIndex: () => userStore.all().reduce((m, u) => Math.max(m, u.key_index + 1), 0),
 };
+
+/* ---------- tester access codes and the waitlist ---------- */
+
+export type AccessCode = {
+  id: string;
+  label: string;
+  code_hash: string; // sha256 of the code; the code itself is shown once, at creation
+  last4: string;
+  max_uses: number | null; // null = unlimited
+  uses: number;
+  revoked: number;
+  expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  events?: SwapEvent[];
+};
+export const accessCodes = createStore<AccessCode>(config.ACCESS_PATH, "access code");
+
+export type WaitlistEntry = {
+  id: string;
+  email: string; // lowercased; unique
+  source: string | null;
+  created_at: string;
+  updated_at: string;
+  events?: SwapEvent[];
+};
+export const waitlist = createStore<WaitlistEntry>(config.WAITLIST_PATH, "waitlist entry");

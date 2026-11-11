@@ -137,19 +137,29 @@ export const setSessionToken = (t: string | null) => {
   sessionToken = t;
 };
 
+/** Tester access token (cookie set at /admin). Sent with every request while Paya is in private testing. */
+export const ACCESS_COOKIE = "paya_access";
+function accessToken() {
+  if (typeof document === "undefined") return null;
+  const m = document.cookie.match(new RegExp(`(?:^|; )${ACCESS_COOKIE}=([^;]+)`));
+  return m ? decodeURIComponent(m[1]) : null;
+}
+
 async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   let r: Response;
+  const access = accessToken();
   try {
     r = await fetch(`${RELAY_URL}${path}`, {
       ...init,
       headers: {
         "Content-Type": "application/json",
         ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+        ...(access ? { "X-Paya-Access": access } : {}),
         ...(init.headers ?? {}),
       },
     });
   } catch {
-    throw new ApiError(`Can't reach the Paya relay at ${RELAY_URL}. Start it with "npm run dev" in services/relay.`, 0);
+    throw new ApiError("Can't reach Paya right now. Check your connection and try again.", 0);
   }
   const body = (await r.json().catch(() => ({}))) as { error?: string; code?: string } & T;
   if (!r.ok) throw new ApiError(body.error ?? `Request failed (${r.status})`, r.status, body.code);
@@ -157,6 +167,10 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
 }
 
 export const api = {
+  joinWaitlist: (email: string, source?: string) =>
+    request<{ ok: true }>("/waitlist", { method: "POST", body: JSON.stringify({ email, source }) }),
+  redeemAccess: (code: string) =>
+    request<{ token: string; expiresAt: string; label: string }>("/access/redeem", { method: "POST", body: JSON.stringify({ code }) }),
   health: () => request<{ ok: boolean; demo: boolean; feePercent: number }>("/health"),
   currencies: () => request<Currency[]>("/currencies"),
   prices: () => request<{ nearUsd: number; ngnPerUsd: number | null }>("/prices"),

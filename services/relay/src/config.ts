@@ -82,6 +82,14 @@ const schema = z.object({
   DB_PATH: z.string().default("./paya-data.json"),
   BUYS_PATH: z.string().default("./paya-buys.json"),
   USERS_PATH: z.string().default("./paya-users.json"),
+  ACCESS_PATH: z.string().default("./paya-access.json"),
+  WAITLIST_PATH: z.string().default("./paya-waitlist.json"),
+  /**
+   * Private testing: when set, the app's API only answers people who unlocked
+   * it with a tester access code. Same value as the website's ACCESS_SECRET.
+   * Generate with: openssl rand -hex 32
+   */
+  ACCESS_SECRET: z.string().min(32, "ACCESS_SECRET must be at least 32 characters").optional(),
   /** How often deposit addresses are checked for incoming NEAR. */
   DEPOSIT_POLL_MS: z.coerce.number().int().min(5000).default(15000),
   POLL_MS: z.coerce.number().int().min(2000).default(5000),

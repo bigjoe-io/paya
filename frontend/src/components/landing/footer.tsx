@@ -1,4 +1,3 @@
-import Link from "next/link";
 export function Footer() {
   return (
     <footer className="container-page pb-12">
@@ -15,9 +14,6 @@ export function Footer() {
             <path d="M18.244 2H21.5l-7.5 8.57L22.5 22h-6.9l-5.4-7.06L4 22H.744l8.02-9.17L.5 2h7.08l4.88 6.45L18.244 2Zm-1.21 18h1.8L7.04 3.9H5.1L17.034 20Z" />
           </svg>
         </a>
-        <Link href="/docs" className="focus-ring -m-2 rounded-md p-2 hover:text-muted-foreground">
-          Docs
-        </Link>
         <a href="/terms" className="focus-ring -m-2 rounded-md p-2 hover:text-muted-foreground">
           Terms of Service
         </a>

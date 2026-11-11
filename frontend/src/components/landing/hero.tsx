@@ -1,5 +1,5 @@
 import { ArrowDown, Check, ChevronDown } from "lucide-react";
-import { ButtonLink } from "@/components/ui/button";
+import { WaitlistButton } from "@/components/landing/waitlist";
 import { NearIcon } from "@/components/landing/icons";
 import { COUNTRIES } from "@/components/landing/countries";
 import { ElectricLines, STONE_TEXTURE } from "@/components/landing/fx";
@@ -14,9 +14,7 @@ export function Hero() {
         <p className="mt-4 max-w-md text-lg text-muted-foreground text-pretty">
           Sign up with your email, link your bank, and send NEAR to your own Paya address. Cash lands in your local currency in minutes.
         </p>
-        <ButtonLink href="/app" className="mt-8">
-          Open app
-        </ButtonLink>
+        <WaitlistButton className="mt-8" source="hero" />
         <p className="mt-4 text-sm text-muted-foreground">
           <span aria-hidden="true">{COUNTRIES.map((c) => c.flag).join(" ")}</span>
           <span className="sr-only">Available in {COUNTRIES.map((c) => c.country).join(", ")}</span>
