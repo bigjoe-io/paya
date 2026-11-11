@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { NearIcon, TokenIcon } from "@/components/landing/icons";
 import { useWallet } from "@/components/app/wallet-provider";
-import type { TokenSymbol } from "@/lib/mock";
+type TokenSymbol = "NEAR" | "USDC" | "SOL";
 import { cn } from "@/lib/utils";
 
 /** Pill tabs that navigate (keeps tab state in the URL). */

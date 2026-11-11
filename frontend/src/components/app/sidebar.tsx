@@ -8,7 +8,7 @@ import { useWallet } from "@/components/app/wallet-provider";
 import { cn } from "@/lib/utils";
 
 const main = [{ href: "/app", label: "Swap", icon: ArrowLeftRight }];
-const markets = [{ href: "/app/earn", label: "Earn", icon: TrendingUp }];
+const markets = [{ href: "/app/earn", label: "Earn", icon: TrendingUp, soon: true }];
 const more = [
   { href: "/app/activity", label: "Activity", icon: Clock },
   { href: "/app/recipients", label: "Recipients", icon: Users },
@@ -87,12 +87,14 @@ function WalletCard() {
   );
 }
 
-function NavGroup({ title, items, pathname }: { title?: string; items: typeof allNav; pathname: string }) {
+type NavItem = { href: string; label: string; icon: typeof TrendingUp; soon?: boolean };
+
+function NavGroup({ title, items, pathname }: { title?: string; items: NavItem[]; pathname: string }) {
   return (
     <div>
       {title && <p className="mb-2 px-3 text-xs font-medium text-muted-foreground">{title}</p>}
       <ul className="space-y-1">
-        {items.map(({ href, label, icon: Icon }) => {
+        {items.map(({ href, label, icon: Icon, soon }) => {
           const active = isActive(pathname, href);
           return (
             <li key={href}>
@@ -106,6 +108,11 @@ function NavGroup({ title, items, pathname }: { title?: string; items: typeof al
               >
                 <Icon className="size-4" aria-hidden="true" />
                 {label}
+                {soon && (
+                  <span className="ml-auto rounded-full bg-foreground/10 px-1.5 py-0.5 text-[10px] font-medium tracking-wide uppercase">
+                    Soon
+                  </span>
+                )}
               </Link>
             </li>
           );
