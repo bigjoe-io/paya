@@ -16,3 +16,6 @@ contracts/**/target/
 # Editors
 .vscode/
 .idea/
+
+# local deploy tokens (never commit)
+.secrets/
