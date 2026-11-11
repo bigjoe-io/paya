@@ -12,6 +12,7 @@ import { useAccount } from "@/components/app/account-provider";
 import { useSession } from "@/components/app/session-provider";
 import { api, type Currency } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { usePersistentState } from "@/lib/persist";
 
 const TABS = [
   { id: "buy", label: "Buy", soon: false },
@@ -25,7 +26,7 @@ export default function SwapPage() {
   const [currencies, setCurrencies] = useState<Currency[] | null>(null);
   const [prices, setPrices] = useState<{ nearUsd: number; ngnPerUsd: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = useState<"buy" | "sell">("sell");
+  const [tab, setTab] = usePersistentState<"buy" | "sell">("tab", "sell");
   const [signIn, setSignIn] = useState(false);
 
   useEffect(() => {

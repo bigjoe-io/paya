@@ -7,6 +7,7 @@ import { RecipientDialog } from "@/components/app/recipient-dialog";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { api, ApiError, type Currency } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { usePersistentState } from "@/lib/persist";
 
 /**
  * Pick a country, then a bank account (searchable bank list + name check),
@@ -15,7 +16,7 @@ import { cn } from "@/lib/utils";
 export function LinkBank({ label = "Link bank account", variant = "primary" }: { label?: string; variant?: "primary" | "quiet" }) {
   const { me, setMe } = useAccount();
   const [currencies, setCurrencies] = useState<Currency[]>([]);
-  const [code, setCode] = useState<string | null>(null);
+  const [code, setCode] = usePersistentState<string | null>("bank:country", null);
   const [dialog, setDialog] = useState<"none" | "pick" | "signin">("none");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);

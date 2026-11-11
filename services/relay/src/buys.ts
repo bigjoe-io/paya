@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
-import { buys, type Buy, type BuyStatus } from "./db.js";
+import { buys, users, type Buy, type BuyStatus } from "./db.js";
+import { pajTokenOf } from "./accounts.js";
 import { log, warn } from "./log.js";
 import { oneclick } from "./oneclick.js";
 import { COUNTRY, paj } from "./paj.js";
@@ -20,11 +21,47 @@ import { indicativeBuyRate } from "./fx.js";
  */
 /** Every country PAJ pays in also takes deposits (USD stays "coming soon"). */
 export const BUY_CURRENCIES = Object.keys(COUNTRY);
-/** Roughly US$1.50 each: below that the swap's fixed costs eat the purchase. */
-export const MIN_BUY: Record<string, number> = { NGN: 2000, GHS: 20, KES: 200, TZS: 4000, ZAR: 25 };
+/**
+ * Minimum purchase, derived from the live rate:
+ *   the swap must receive ≥ MIN_SWAP_USDC after PAJ's send fee and Paya's fee,
+ *   plus a 5% cushion for rate moves, rounded up to a clean amount.
+ * At ₦1,405/USDC that's ₦5,000.
+ */
+const MIN_SWAP_USDC = 3;
+const MIN_CUSHION = 1.05;
+const minCache = new Map<string, { at: number; min: number }>();
+
+/** Round up to a "nice" amount: 4,744 → 5,000 · 448 → 450 · 40.2 → 45. */
+export function roundUpNice(x: number) {
+  const step = 5 * 10 ** Math.max(0, Math.floor(Math.log10(x)) - 1);
+  return Math.ceil(x / step) * step;
+}
+
+/** Local currency per USDC that a buyer pays (public rate; no session needed). */
+async function buyRate(currency: string) {
+  return currency === "NGN" ? paj.publicNgnBuyRate() : indicativeBuyRate(currency);
+}
+
+export async function minBuy(currency: string) {
+  const hit = minCache.get(currency);
+  if (hit && Date.now() - hit.at < 5 * 60_000) return hit.min;
+  const usdcNeeded = (MIN_SWAP_USDC + PAJ_SEND_FEE_USDC) / (1 - config.FEE_PERCENT / 100);
+  const min = roundUpNice(usdcNeeded * (await buyRate(currency)) * MIN_CUSHION);
+  minCache.set(currency, { at: Date.now(), min });
+  return min;
+}
 const DEADLINE_MS = 24 * 60 * 60 * 1000; // bank transfers can be slow
-/** Quote the swap a little below the USDC we expect, so any normal delivery clears its minimum. */
-const QUOTE_HEADROOM = 0.97;
+/**
+ * PAJ's on-ramp `amount` is not what lands: on 2026-11-11 an order for
+ * 1.424305 USDC delivered 1.299652 (≈0.125 USDC kept for the Solana send).
+ * Assume up to this much goes missing, then quote the swap 5% lower still.
+ * FLEX_INPUT swaps whatever actually arrives, so a low reference amount
+ * costs the user nothing; it only lowers the minimum the deposit must reach.
+ */
+export const PAJ_SEND_FEE_USDC = 0.2;
+const QUOTE_HEADROOM = 0.95;
+/** USDC the swap can count on, from what PAJ says it will send. */
+const reliableUsdc = (pajAmount: number) => Math.max(0, pajAmount - PAJ_SEND_FEE_USDC);
 
 export type BuyPreview = {
   fiat: number;
@@ -32,6 +69,8 @@ export type BuyPreview = {
   usdc: number;
   feeUsdc: number;
   usdcNet: number;
+  /** USDC PAJ keeps when it sends to Solana (estimate). */
+  networkFeeUsdc: number;
   nearOut: number;
   nearMin: number;
   rate: number; // fiat per USDC
@@ -51,10 +90,10 @@ async function usdcFor(fiat: number, currency: string, token?: string) {
 }
 
 export async function previewBuy(fiat: number, currency: string, account: string, token?: string): Promise<BuyPreview> {
-  checkBuyInput(fiat, currency);
+  await checkBuyInput(fiat, currency);
   const { usdc, source } = await usdcFor(fiat, currency, token);
   const feeUsdc = round2((usdc * config.FEE_PERCENT) / 100);
-  const usdcNet = round2(usdc - feeUsdc);
+  const usdcNet = round2(reliableUsdc(usdc - feeUsdc));
   if (usdcNet <= 1) throw new Error("Amount too small");
   const q = await oneclick.buyQuote(BigInt(Math.floor(usdcNet * 1e6)), account, { dry: true });
   const nearOut = yoctoToNear(q.amountOut);
@@ -64,6 +103,7 @@ export async function previewBuy(fiat: number, currency: string, account: string
     usdc: round2(usdc),
     feeUsdc,
     usdcNet,
+    networkFeeUsdc: PAJ_SEND_FEE_USDC,
     nearOut,
     nearMin: q.minAmountOut ? yoctoToNear(q.minAmountOut) : nearOut,
     rate: fiat / usdc,
@@ -74,14 +114,14 @@ export async function previewBuy(fiat: number, currency: string, account: string
   };
 }
 
-export function checkBuyInput(fiat: number, currency: string) {
+export async function checkBuyInput(fiat: number, currency: string) {
   if (!BUY_CURRENCIES.includes(currency)) throw new Error(`Buying with ${currency} is coming soon`);
-  const min = MIN_BUY[currency] ?? 0;
+  const min = await minBuy(currency);
   if (fiat < min) throw new Error(`Minimum buy is ${min.toLocaleString("en-US")} ${currency}`);
 }
 
 export async function createBuy(p: { accountId: string; fiat: number; currency: string }, token: string) {
-  checkBuyInput(p.fiat, p.currency);
+  await checkBuyInput(p.fiat, p.currency);
   const id = `buy_${crypto.randomBytes(6).toString("hex")}`;
   const { usdc } = await usdcFor(p.fiat, p.currency, token);
   const feeUsdc = round2((usdc * config.FEE_PERCENT) / 100);
@@ -123,7 +163,8 @@ export async function createBuy(p: { accountId: string; fiat: number; currency: 
   }
 
   // 1. NEAR Intents deposit address on Solana that swaps whatever USDC arrives into NEAR for this user
-  const quoteUsdc = BigInt(Math.floor(usdcNet * QUOTE_HEADROOM * 1e6));
+  if (reliableUsdc(usdcNet) <= 1) throw new Error("Amount too small");
+  const quoteUsdc = BigInt(Math.floor(reliableUsdc(usdcNet) * QUOTE_HEADROOM * 1e6));
   const q = await oneclick.buyQuote(quoteUsdc, p.accountId, { dry: false, deadline });
   if (!q.depositAddress) throw new Error("Swap quote returned no deposit address");
 
@@ -138,10 +179,12 @@ export async function createBuy(p: { accountId: string; fiat: number; currency: 
 
   // Never show payment details for an order whose USDC would fall below the swap's minimum.
   const minIn = Number(q.minAmountIn ?? q.amountIn) / 1e6;
-  const scale = order.amount / (Number(quoteUsdc) / 1e6);
+  // Expected NEAR is priced on what will actually arrive, not on PAJ's headline amount.
+  const arriving = reliableUsdc(order.amount);
+  const scale = arriving / (Number(quoteUsdc) / 1e6);
   const nearExpected = (BigInt(q.amountOut) * BigInt(Math.round(scale * 1e6))) / 1_000_000n;
   const nearMin = (BigInt(q.minAmountOut ?? q.amountOut) * BigInt(Math.round(scale * 1e6))) / 1_000_000n;
-  const status: BuyStatus = order.amount >= minIn ? "awaiting_payment" : "failed";
+  const status: BuyStatus = arriving >= minIn ? "awaiting_payment" : "failed";
 
   buys.insert({
     ...base,
@@ -158,7 +201,7 @@ export async function createBuy(p: { accountId: string; fiat: number; currency: 
     deposit_address: q.depositAddress,
     status,
     demo: 0,
-    error: status === "failed" ? `PAJ would send ${order.amount} USDC, below the swap minimum of ${minIn.toFixed(2)}. Don't pay this order.` : null,
+    error: status === "failed" ? `PAJ would deliver about ${arriving.toFixed(2)} USDC, below the swap minimum of ${minIn.toFixed(2)}. Don't pay this order.` : null,
   });
   buys.event(id, "created", {
     fiat: p.fiat,
@@ -169,7 +212,7 @@ export async function createBuy(p: { accountId: string; fiat: number; currency: 
     swapMinUsdc: minIn,
   });
   if (status === "failed") {
-    warn("buy", `${id} refused: PAJ amount ${order.amount} < swap min ${minIn}`);
+    warn("buy", `${id} refused: PAJ delivers ~${arriving} < swap min ${minIn}`);
     throw new Error("We couldn't lock a safe rate for this amount. Please try again. Do not pay the previous order.");
   }
   log("buy", `${id} PAJ ${order.id}: pay ${order.fiatAmount} ${p.currency} → ${order.amount} USDC → ~${yoctoToNear(nearExpected.toString())} NEAR`);
@@ -217,8 +260,9 @@ async function advance(b: Buy) {
     return;
   }
   // 1. has PAJ received the money and sent the USDC?
-  if (b.paj_order_id && b.paj_token && b.status === "awaiting_payment") {
-    const t = await paj.transaction(b.paj_token, b.paj_order_id);
+  const token = currentPajToken(b.account_id) ?? b.paj_token;
+  if (b.paj_order_id && token && b.status === "awaiting_payment") {
+    const t = await paj.transaction(token, b.paj_order_id);
     if (t.status !== b.payment_status) {
       buys.update(b.id, { payment_status: t.status });
       buys.event(b.id, "payment_status", { status: t.status });
@@ -235,7 +279,23 @@ async function advance(b: Buy) {
     if (st === "SUCCESS") set(b, "delivered", { paj_token: null });
     else if (st === "REFUNDED") set(b, "refunded", { error: "The swap couldn't complete; the USDC is in your NEAR Intents balance", paj_token: null });
     else if (st === "FAILED") set(b, "failed", { error: "Swap failed", paj_token: null });
+    else if (st === "INCOMPLETE_DEPOSIT" && b.error !== SHORT_DEPOSIT) {
+      // Less USDC arrived than the swap's minimum. NEAR Intents holds it: a top-up completes the
+      // swap, otherwise it's refunded to the user's NEAR Intents balance at the deadline.
+      buys.update(b.id, { error: SHORT_DEPOSIT });
+      buys.event(b.id, "short_deposit", { depositAddress: b.deposit_address });
+      warn("buy", `${b.id} INCOMPLETE_DEPOSIT at ${b.deposit_address}`);
+    }
   }
+}
+
+const SHORT_DEPOSIT =
+  "Your payment arrived but came in slightly under the swap minimum. Your money is safe with NEAR Intents; our team is completing it.";
+
+/** The account's live PAJ session: per-order tokens go stale when the user signs in again. */
+function currentPajToken(address: string) {
+  const u = users.byAddress(address);
+  return u ? pajTokenOf(u) : null;
 }
 
 async function advanceDemo(b: Buy) {

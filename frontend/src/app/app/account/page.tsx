@@ -12,6 +12,7 @@ import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { api } from "@/lib/api";
 import { maskAccount } from "@/lib/recipients";
 import { cn } from "@/lib/utils";
+import { usePersistentState } from "@/lib/persist";
 
 export default function AccountPage() {
   const { signedIn, email, signOut } = useSession();
@@ -174,10 +175,10 @@ function SendNear({ max }: { max: number }) {
   const { email, startSignIn } = useSession();
   const { refresh } = useAccount();
   const ids = useId();
-  const [to, setTo] = useState("");
-  const [amount, setAmount] = useState("");
+  const [to, setTo] = usePersistentState("send:to", "");
+  const [amount, setAmount] = usePersistentState("send:amount", "");
   const [code, setCode] = useState("");
-  const [step, setStep] = useState<"form" | "code" | "done">("form");
+  const [step, setStep] = usePersistentState<"form" | "code" | "done">("send:step", "form");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tx, setTx] = useState<string | null>(null);

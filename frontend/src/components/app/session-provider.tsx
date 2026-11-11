@@ -9,6 +9,7 @@ import {
   type ReactNode,
 } from "react";
 import { api, setSessionToken } from "@/lib/api";
+import { clearPersisted } from "@/lib/persist";
 
 /**
  * Email sign-in (code sent by the payout network). Verifying returns a Paya
@@ -98,6 +99,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const signOut = useCallback(() => {
+    clearPersisted(["sell:", "buy:", "send:", "signin:", "bank:"]);
     setSessionToken(null);
     write(null);
   }, []);

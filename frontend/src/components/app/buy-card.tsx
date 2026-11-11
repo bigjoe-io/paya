@@ -7,6 +7,11 @@ import { shortAddress, useAccount } from "@/components/app/account-provider";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { api, ApiError, formatFiat, type Buy, type BuyQuote, type Currency, type Me } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { usePersistentState } from "@/lib/persist";
+
+/** Show an order again after a reload: anything still running, or finished in the last 30 minutes and not dismissed. */
+const RESUME_MS = 30 * 60_000;
+
 
 /** Quick amounts per currency (roughly $3, $15, $35). */
 const QUICK: Record<string, number[]> = {
@@ -14,7 +19,7 @@ const QUICK: Record<string, number[]> = {
   GHS: [50, 200, 500],
   KES: [500, 2000, 5000],
   TZS: [10000, 40000, 100000],
-  ZAR: [50, 250, 600],
+  ZAR: [100, 250, 600],
 };
 /** PAJ's KYC country codes. */
 const ISO: Record<string, string> = { NGN: "NG", GHS: "GH", KES: "KE", TZS: "TZ", ZAR: "ZA" };
@@ -24,8 +29,9 @@ const needsKyc = (msg: string) => /kyc|bvn|\bnin\b|verify your identity|identity
 export function BuyCard({ me, currencies }: { me: Me; currencies: Currency[] }) {
   const { refresh } = useAccount();
   const [buyable, setBuyable] = useState<{ code: string; min: number }[] | null>(null);
-  const [amount, setAmount] = useState("");
-  const [code, setCode] = useState("NGN");
+  const [amount, setAmount] = usePersistentState("buy:amount", "");
+  const [code, setCode] = usePersistentState("buy:currency", "NGN");
+  const [dismissed, setDismissed] = usePersistentState("buy:dismissed", "");
   const [rawQuote, setQuote] = useState<BuyQuote | null>(null);
   const [rawQuoteError, setQuoteError] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -39,6 +45,25 @@ export function BuyCard({ me, currencies }: { me: Me; currencies: Currency[] }) 
 
   useEffect(() => {
     api.buyCurrencies().then(setBuyable).catch(() => undefined);
+  }, []);
+
+  // After a reload, pick the order back up instead of starting over.
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .activity()
+      .then(({ buys }) => {
+        const b = buys[0];
+        if (cancelled || !b || b.id === dismissed) return;
+        const running = b.status === "awaiting_payment" || b.status === "converting";
+        if (running || Date.now() - Date.parse(b.updatedAt) < RESUME_MS) setOrder((o) => o ?? b);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+    // once per mount
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const currency = currencies.find((c) => c.code === code) ?? currencies[0];
@@ -114,6 +139,7 @@ export function BuyCard({ me, currencies }: { me: Me; currencies: Currency[] }) 
           initial={order}
           currency={currency}
           onDone={() => {
+            setDismissed(order.id);
             setOrder(null);
             setAmount("");
           }}
@@ -260,6 +286,7 @@ export function BuyCard({ me, currencies }: { me: Me; currencies: Currency[] }) 
           <dl className="mt-2 space-y-1 rounded-xl bg-card p-3 text-xs">
             <Row label="Converted to" value={`${quote.usdc.toFixed(2)} USDC`} />
             <Row label={`Paya fee (${quote.feePercent}%)`} value={`${quote.feeUsdc.toFixed(2)} USDC`} />
+            <Row label="Network fee (est.)" value={`${quote.networkFeeUsdc.toFixed(2)} USDC`} />
             <Row label="Rate" value={`1 USDC ≈ ${formatFiat(quote.rate, currency)}`} />
             <Row label="Minimum you get" value={`${quote.nearMin.toFixed(4)} NEAR`} />
             <Row label="Arrives" value={`~${Math.ceil(quote.etaSeconds / 60)} min after your transfer`} />
@@ -304,7 +331,7 @@ export function BuyCard({ me, currencies }: { me: Me; currencies: Currency[] }) 
 const STEPS = [
   { key: "awaiting_payment", label: "Send the transfer" },
   { key: "converting", label: "Payment received, buying NEAR" },
-  { key: "delivered", label: "NEAR in your wallet" },
+  { key: "delivered", label: "NEAR in your Paya balance" },
 ] as const;
 
 function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Currency; onDone: () => void }) {
@@ -360,6 +387,13 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
             Send from a bank account in your own name, in one transfer, before the timer runs out. This account is for this order only.
           </p>
         </section>
+      )}
+
+      {buy.status === "converting" && buy.error && (
+        <p className="mt-5 flex gap-2 rounded-xl bg-warning-soft p-3 text-sm text-pretty">
+          <Info className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
+          {buy.error}
+        </p>
       )}
 
       {/* progress */}

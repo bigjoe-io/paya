@@ -49,6 +49,7 @@ export type BuyQuote = {
   usdc: number;
   feeUsdc: number;
   usdcNet: number;
+  networkFeeUsdc: number;
   nearOut: number;
   nearMin: number;
   rate: number;

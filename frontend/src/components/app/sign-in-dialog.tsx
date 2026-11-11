@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { ArrowRight, Mail, X } from "lucide-react";
 import { useSession } from "@/components/app/session-provider";
+import { usePersistentState } from "@/lib/persist";
 
 /**
  * Email + one-time code (sent by the payout network). Creates the Paya
@@ -11,8 +12,8 @@ import { useSession } from "@/components/app/session-provider";
 export function SignInDialog({ open, onClose, onSignedIn }: { open: boolean; onClose: () => void; onSignedIn?: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
   const { startSignIn, verify, email: current } = useSession();
-  const [step, setStep] = useState<"email" | "code">("email");
-  const [typed, setTyped] = useState<string | null>(null);
+  const [step, setStep] = usePersistentState<"email" | "code">("signin:step", "email");
+  const [typed, setTyped] = usePersistentState<string | null>("signin:email", null);
   // Re-verifying an existing session: start from the account's email.
   const email = typed ?? current ?? "";
   const setEmail = setTyped;
@@ -48,6 +49,7 @@ export function SignInDialog({ open, onClose, onSignedIn }: { open: boolean; onC
     setError(null);
     try {
       await verify(email, code);
+      setStep("email"); // done: next sign-in starts fresh
       ref.current?.close();
       onSignedIn?.();
     } catch (err) {

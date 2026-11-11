@@ -8,7 +8,7 @@ import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { preview } from "./quote.js";
 import { applyPayout } from "./swaps.js";
-import { BUY_CURRENCIES, MIN_BUY, createBuy, markSent, previewBuy } from "./buys.js";
+import { BUY_CURRENCIES, createBuy, markSent, minBuy, previewBuy } from "./buys.js";
 import { buys, type Buy } from "./db.js";
 import { admin } from "./admin.js";
 import { audit, last4 } from "./audit.js";
@@ -243,7 +243,9 @@ app.get("/swaps/:id", (c) => {
 
 /* ---------- buy: fiat → NEAR ---------- */
 
-app.get("/buy/currencies", (c) => c.json(BUY_CURRENCIES.map((code) => ({ code, min: MIN_BUY[code] ?? 0 }))));
+app.get("/buy/currencies", async (c) =>
+  c.json(await Promise.all(BUY_CURRENCIES.map(async (code) => ({ code, min: await minBuy(code).catch(() => 0) })))),
+);
 
 app.get("/buy/quote", async (c) => {
   const q = z
@@ -314,8 +316,10 @@ app.route("/admin", admin);
 app.post("/webhooks/paj", async (c) => {
   const body = (await c.req.json().catch(() => ({}))) as { id?: string };
   const s = body.id ? swaps.byPajOrderId(body.id) : undefined;
-  if (s?.paj_token && s.paj_order_id) {
-    const t = await paj.transaction(s.paj_token, s.paj_order_id);
+  const owner = s ? users.byAddress(s.account_id) : undefined;
+  const token = (owner && pajTokenOf(owner)) || s?.paj_token;
+  if (s && token && s.paj_order_id) {
+    const t = await paj.transaction(token, s.paj_order_id);
     applyPayout(s, t.status, t.signature);
     log("webhook", `${s.id} ${t.status}`);
   }

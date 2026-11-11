@@ -11,6 +11,11 @@ import { SwapProgress, useSwap } from "@/components/app/swap-progress";
 import { api, ApiError, formatFiat, type Currency, type Me, type Quote, type Swap } from "@/lib/api";
 import { maskAccount } from "@/lib/recipients";
 import { cn } from "@/lib/utils";
+import { usePersistentState } from "@/lib/persist";
+
+/** Show an order again after a reload: anything still running, or finished in the last 30 minutes and not dismissed. */
+const RESUME_MS = 30 * 60_000;
+
 
 type Phase = { name: "edit" } | { name: "sending" } | { name: "tracking"; swap: Swap };
 
@@ -23,7 +28,8 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
   const { setMe, refresh } = useAccount();
   const bank = me.bank!;
   const currency = currencies.find((c) => c.code === bank.currency) ?? currencies[0];
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = usePersistentState("sell:amount", "");
+  const [dismissed, setDismissed] = usePersistentState("sell:dismissed", "");
   const [rawQuote, setQuote] = useState<Quote | null>(null);
   const [rawQuoteError, setQuoteError] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -72,6 +78,28 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
     };
   }, [near, bank.currency, nonce]);
 
+  // After a reload (or an automatic cash-out), show the latest cash-out's progress.
+  useEffect(() => {
+    let cancelled = false;
+    const check = () =>
+      api
+        .activity()
+        .then(({ cashouts }) => {
+          const s = cashouts[0];
+          if (cancelled || !s || s.id === dismissed) return;
+          const running = s.status === "awaiting_deposit" || s.status === "swapping" || s.status === "paying";
+          if (running || Date.now() - Date.parse(s.updatedAt) < RESUME_MS)
+            setPhase((p) => (p.name === "edit" ? { name: "tracking", swap: s } : p));
+        })
+        .catch(() => undefined);
+    void check();
+    const t = setInterval(check, 15_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, [dismissed]);
+
   const tracked = useSwap(phase.name === "tracking" ? phase.swap.id : null, phase.name === "tracking" ? phase.swap : null);
 
   async function onCashOut() {
@@ -119,6 +147,7 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
           swap={tracked ?? phase.swap}
           currency={currency}
           onDone={() => {
+            setDismissed(phase.swap.id);
             setPhase({ name: "edit" });
             setAmount("");
           }}

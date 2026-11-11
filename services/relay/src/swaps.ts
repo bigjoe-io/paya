@@ -1,6 +1,7 @@
 import crypto from "node:crypto";
 import { config } from "./config.js";
-import { swaps, type Swap, type SwapStatus } from "./db.js";
+import { swaps, users, type Swap, type SwapStatus } from "./db.js";
+import { pajTokenOf } from "./accounts.js";
 import { log, warn } from "./log.js";
 import { oneclick } from "./oneclick.js";
 import { paj, type PajStatus } from "./paj.js";
@@ -180,8 +181,10 @@ async function advance(s: Swap) {
     else if (st === "FAILED" || st === "INCOMPLETE_DEPOSIT") set(s, "failed", { error: `Swap ${st.toLowerCase()}` });
     return;
   }
-  if (s.status === "paying" && s.paj_order_id && s.paj_token) {
-    const t = await paj.transaction(s.paj_token, s.paj_order_id);
+  const owner = users.byAddress(s.account_id);
+  const token = (owner && pajTokenOf(owner)) || s.paj_token;
+  if (s.status === "paying" && s.paj_order_id && token) {
+    const t = await paj.transaction(token, s.paj_order_id);
     applyPayout(s, t.status, t.signature);
   }
 }
