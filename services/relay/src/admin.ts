@@ -2,7 +2,8 @@ import crypto from "node:crypto";
 import { Hono } from "hono";
 import { readAudit } from "./audit.js";
 import { config } from "./config.js";
-import { buys, swaps, type Buy, type Swap } from "./db.js";
+import { buys, swaps, users, type Buy, type Swap, type User } from "./db.js";
+import { balances, toNear } from "./near.js";
 import { oneclick } from "./oneclick.js";
 
 /**
@@ -74,6 +75,8 @@ admin.get("/stats", (c) => {
     feesUsdc: sum(paid, (s) => Number(s.fee_usdc)),
     fiatByCurrency,
     uniqueWallets: new Set(live.map((s) => s.account_id)).size,
+    accounts: users.all().length,
+    accountsWithBank: users.all().filter((u) => u.bank_id).length,
     buys: (() => {
       const lb = buys.all().filter((b) => !b.demo);
       const done = lb.filter((b) => b.status === "delivered");
@@ -99,7 +102,10 @@ admin.get("/swaps", (c) => {
   if (status) list = list.filter((s) => s.status === status);
   if (mode === "live") list = list.filter((s) => !s.demo);
   if (mode === "simulated") list = list.filter((s) => s.demo);
-  if (q) list = list.filter((s) => haystack(s).includes(q));
+  if (q) {
+    const owner = users.byEmail(q)?.address;
+    list = list.filter((s) => haystack(s).includes(q) || (owner && s.account_id === owner));
+  }
   return c.json(list.slice(0, limit).map(full));
 });
 
@@ -163,6 +169,36 @@ admin.post("/buys/:id/recheck", async (c) => {
     const msg = (e as Error).message;
     return c.json({ checkedAt: new Date().toISOString(), swap: null, note: /404/.test(msg) ? "NEAR Intents hasn't seen any USDC at this deposit address yet." : msg });
   }
+});
+
+/* ---------- accounts ---------- */
+
+/** Everything except the encrypted PAJ session. */
+function publicUser(u: User) {
+  const { paj_token_enc: _omit, ...rest } = u;
+  return { ...rest, has_paj_session: Boolean(_omit) && Boolean(u.paj_expires_at && Date.parse(u.paj_expires_at) > Date.now()) };
+}
+
+admin.get("/users", (c) => {
+  const q = c.req.query("q")?.trim().toLowerCase();
+  let list = users.all();
+  if (q)
+    list = list.filter((u) =>
+      [u.id, u.email, u.address, u.account_number, u.account_name, u.bank_name].filter(Boolean).join(" ").toLowerCase().includes(q),
+    );
+  return c.json(list.slice(0, 500).map(publicUser));
+});
+
+admin.get("/users/:id", async (c) => {
+  const u = users.byId(c.req.param("id"));
+  if (!u) return c.json({ error: "Not found" }, 404);
+  const b = await balances(u.address).catch(() => null);
+  return c.json({
+    ...publicUser(u),
+    onchain: b ? { exists: b.exists, near: toNear(b.available), wnear: toNear(b.wnear) } : null,
+    cashouts: swaps.forAccount(u.address, 100).map(full),
+    buys: buys.forAccount(u.address, 100).map(fullBuy),
+  });
 });
 
 admin.get("/audit", (c) => {

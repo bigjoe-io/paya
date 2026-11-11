@@ -29,15 +29,17 @@ npm run dev                  # http://localhost:3001
 
 - **Transactions** — totals (paid, in flight, failed/refunded, success rate, volume, fees earned), then every cash-out. Search by NEAR transaction hash, Solana signature, swap id, PAJ order id, wallet, account number or recipient name. Filter by status and live/simulated.
 - **A transaction** — money breakdown, who sent and who received, every identifier with a link to its public explorer, and the full timeline (order created → wallet sent → NEAR Intents statuses → PAJ statuses). **Re-check with NEAR Intents** asks for the swap's status right now.
-- **Audit log** — sign-ins, saved bank accounts, KYC submissions, created and refused swaps. Account numbers are masked; ID numbers and session tokens are never logged.
+- **Accounts** — every user: email, their Paya NEAR address (with live on-chain balance), linked bank, auto cash-out state, and the account's full timeline (created, bank linked/changed, auto cash-outs, unwraps, NEAR sent out).
+- **Audit log** — sign-ins, linked and changed banks, KYC submissions, cash-outs sent or refused, NEAR sent out. Account numbers are masked; ID numbers and session tokens are never logged.
 
 ## Handling a dispute
 
-1. Ask the user for anything they have: transaction hash, wallet, the amount and time, or their bank account number.
+1. Ask the user for anything they have: their email, their Paya NEAR address, a transaction hash, the amount and time, or their bank account number. Searching **Transactions** by email finds all their cash-outs.
 2. Paste it into Search on **Transactions**.
 3. Open the swap. The timeline shows the last thing that happened:
-   - stuck at **Awaiting wallet** → their wallet never sent; nothing left their account.
-   - **Swapping** for long → press *Re-check with NEAR Intents*. `REFUNDED` means the NEAR is back in their wallet.
+   - **NEAR never cashed out** → open their account in **Accounts**: the on-chain balance shows whether it arrived; the timeline shows "auto waiting sign in" (their email session expired: ask them to sign in again) or "auto failed" with the reason.
+   - stuck at **Sending** → the relay couldn't send from their address; the timeline has the error and nothing left their balance.
+   - **Swapping** for long → press *Re-check with NEAR Intents*. `REFUNDED` means the NEAR is back at their Paya address.
    - **Paying out** for long → the USDC reached PAJ; quote the PAJ order id and Solana address to PAJ support.
    - **Paid** → give them the bank reference.
 4. If the order never appears, search the **Audit log** by their email or wallet: a *Swap rejected* entry shows the exact error they saw.

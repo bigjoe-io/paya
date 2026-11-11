@@ -20,7 +20,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "Paya — One click from NEAR to fiat",
   description:
-    "Paya is a one-click off-ramp on NEAR. Send NEAR, receive naira in your bank account in under a minute. Non-custodial, transparent rates, Nigeria first.",
+    "Paya is a one-click off-ramp on NEAR. Send NEAR, receive naira in your bank account in under a minute. Sign up with email, transparent rates, five African countries.",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {

@@ -21,6 +21,9 @@ export default async function ConsoleLayout({ children }: LayoutProps<"/">) {
             <Link href="/" className="rounded-lg px-3 py-2 text-neutral-700 outline-none hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-blue-600">
               Transactions
             </Link>
+            <Link href="/accounts" className="rounded-lg px-3 py-2 text-neutral-700 outline-none hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-blue-600">
+              Accounts
+            </Link>
             <Link href="/audit" className="rounded-lg px-3 py-2 text-neutral-700 outline-none hover:bg-neutral-100 focus-visible:ring-2 focus-visible:ring-blue-600">
               Audit log
             </Link>

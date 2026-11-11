@@ -1,27 +1,27 @@
 import type { ReactNode } from "react";
-import { BadgeCheck, KeyRound, RotateCcw, ShieldCheck, Wallet } from "lucide-react";
+import { BadgeCheck, KeyRound, Landmark, RotateCcw, ShieldCheck } from "lucide-react";
 import { TabbedPanel, type Tab } from "@/components/landing/tabbed-panel";
 import { ElectricLines, Glow, PerspectiveGrid } from "@/components/landing/fx";
 
 /** Security, as it actually works today. */
 const tabs: Tab[] = [
   {
-    id: "wallet",
-    label: "You sign, we never hold",
+    id: "bank",
+    label: "Paid only to your bank",
     description:
-      "The only transaction that moves money is the one you approve in your own wallet. It goes straight into the swap, never to a Paya account.",
-    panel: <IconPair a={<Wallet className="size-10" aria-hidden="true" />} b={<KeyRound className="size-9 text-white" aria-hidden="true" />} />,
+      "Cash-outs go only to the bank account you verified. Sending NEAR anywhere else needs a fresh code from your email, every time.",
+    panel: <IconPair a={<Landmark className="size-10" aria-hidden="true" />} b={<KeyRound className="size-9 text-white" aria-hidden="true" />} />,
   },
   {
     id: "names",
-    label: "Verified recipients",
+    label: "Verified bank accounts",
     description: "Every bank account is checked with the bank and shows the holder's real name before you can pay it.",
     panel: <IconPair a={<BadgeCheck className="size-10" aria-hidden="true" />} b={<span className="text-2xl font-semibold text-white">₦</span>} />,
   },
   {
     id: "refunds",
     label: "Refunds built in",
-    description: "If the swap can't complete, NEAR Intents returns your NEAR to your wallet automatically. Any unused slippage buffer comes back too.",
+    description: "If a swap can't complete, NEAR Intents returns your NEAR to your Paya address automatically. Any unused slippage buffer comes back too.",
     panel: <IconPair a={<RotateCcw className="size-10" aria-hidden="true" />} b={<span className="font-mono text-lg font-semibold text-white">NEAR</span>} />,
   },
 ];
@@ -57,7 +57,7 @@ export function Security() {
           </span>
           <h3 className="mt-16 text-2xl font-semibold tracking-tight">Your money. Your control.</h3>
           <p className="mt-2 max-w-md text-muted-foreground text-pretty">
-            No deposits into Paya, no balances held by us. Your keys stay in your wallet, and nothing moves until you sign.
+            Your balance sits at your own NEAR address, visible on-chain any time. Turn auto cash-out off to hold, or send it to any wallet with an email code.
           </p>
         </article>
       </section>

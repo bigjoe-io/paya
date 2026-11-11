@@ -1,13 +1,17 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowLeft, Eye, EyeOff, HelpCircle, Wallet } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeft, Eye, EyeOff, HelpCircle, LogIn } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { useWallet } from "@/components/app/wallet-provider";
-import { shortAccount } from "@/components/app/sidebar";
+import { useAccount } from "@/components/app/account-provider";
+import { useSession } from "@/components/app/session-provider";
+import { SignInDialog } from "@/components/app/sign-in-dialog";
 
 export function Topbar({ title, backHref }: { title?: string; backHref?: string }) {
-  const { hidden, toggleHidden, accountId, ready, connecting, connect, disconnect } = useWallet();
+  const { hidden, toggleHidden } = useAccount();
+  const { signedIn, email } = useSession();
+  const [signIn, setSignIn] = useState(false);
 
   return (
     <header className="flex h-14 items-center justify-between gap-3 px-4 lg:px-6">
@@ -45,31 +49,29 @@ export function Topbar({ title, backHref }: { title?: string; backHref?: string 
         >
           <HelpCircle className="size-5" aria-hidden="true" />
         </a>
-        {/* Phones have no sidebar, so the wallet button lives here. */}
+        {/* Phones have no sidebar, so the account button lives here. */}
         <div className="lg:hidden">
-          {accountId ? (
-            <button
-              type="button"
-              onClick={() => void disconnect()}
-              title="Disconnect"
-              className="focus-ring ml-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-panel px-3 font-mono text-xs tabular-nums"
+          {signedIn ? (
+            <Link
+              href="/app/account"
+              aria-label={`Account (${email})`}
+              className="focus-ring ml-1 flex size-10 items-center justify-center rounded-full bg-foreground text-sm font-semibold text-background uppercase"
             >
-              <span className="size-2 rounded-full bg-success" aria-hidden="true" />
-              {shortAccount(accountId)}
-            </button>
+              {email?.[0] ?? "?"}
+            </Link>
           ) : (
             <button
               type="button"
-              onClick={() => void connect()}
-              disabled={!ready || connecting}
-              className="focus-ring ml-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-medium text-background disabled:opacity-60"
+              onClick={() => setSignIn(true)}
+              className="focus-ring ml-1 inline-flex min-h-10 items-center gap-2 rounded-full bg-foreground px-4 text-sm font-medium text-background"
             >
-              <Wallet className="size-4" aria-hidden="true" />
-              {connecting ? "Connecting…" : "Connect"}
+              <LogIn className="size-4" aria-hidden="true" />
+              Sign in
             </button>
           )}
         </div>
       </div>
+      <SignInDialog open={signIn} onClose={() => setSignIn(false)} />
     </header>
   );
 }

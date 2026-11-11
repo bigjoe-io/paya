@@ -4,7 +4,6 @@ import {
   createContext,
   useCallback,
   useContext,
-  useEffect,
   useMemo,
   useSyncExternalStore,
   type ReactNode,
@@ -12,14 +11,16 @@ import {
 import { api, setSessionToken } from "@/lib/api";
 
 /**
- * Email sign-in with the payout network (PAJ). Their OTP session is what lets
- * us list banks, resolve account names, keep saved recipients and create the
- * payout order. Stored in this browser until it expires.
+ * Email sign-in (code sent by the payout network). Verifying returns a Paya
+ * session for the account: its NEAR address, linked bank and balance.
+ * Stored in this browser until it expires (30 days).
  */
 type Saved = { email: string; token: string; expiresAt: string } | null;
 
 type SessionState = {
   email: string | null;
+  /** Changes on every successful verification. */
+  token: string | null;
   signedIn: boolean;
   startSignIn: (email: string) => Promise<void>;
   verify: (email: string, otp: string) => Promise<void>;
@@ -68,7 +69,7 @@ const subscribe = (cb: () => void) => {
   return () => listeners.delete(cb);
 };
 
-function deviceId() {
+export function deviceId() {
   try {
     let id = localStorage.getItem(DEVICE_KEY);
     if (!id) {
@@ -83,11 +84,8 @@ function deviceId() {
 
 export function SessionProvider({ children }: { children: ReactNode }) {
   const saved = useSyncExternalStore(subscribe, read, () => null);
-
-  // Every relay request carries the session when we have one.
-  useEffect(() => {
-    setSessionToken(saved?.token ?? null);
-  }, [saved?.token]);
+  // Every relay request carries the session. Set during render so children's first requests have it.
+  setSessionToken(saved?.token ?? null);
 
   const startSignIn = useCallback(async (email: string) => {
     await api.startSignIn(email.trim().toLowerCase());
@@ -105,7 +103,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const value = useMemo<SessionState>(
-    () => ({ email: saved?.email ?? null, signedIn: Boolean(saved), startSignIn, verify, signOut }),
+    () => ({ email: saved?.email ?? null, token: saved?.token ?? null, signedIn: Boolean(saved), startSignIn, verify, signOut }),
     [saved, startSignIn, verify, signOut],
   );
   return <SessionContext.Provider value={value}>{children}</SessionContext.Provider>;

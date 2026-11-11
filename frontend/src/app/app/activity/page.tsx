@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { ArrowDownLeft, Check, Landmark } from "lucide-react";
 import { Topbar } from "@/components/app/topbar";
 import { Amount, EmptyState, PageTitle } from "@/components/app/ui";
-import { useWallet } from "@/components/app/wallet-provider";
+import { useSession } from "@/components/app/session-provider";
+import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { api, formatFiat, type Buy, type Currency, type Swap } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
@@ -30,7 +31,8 @@ const BUY_LABEL: Record<Buy["status"], string> = {
 type Item = { kind: "sell"; at: string; s: Swap } | { kind: "buy"; at: string; b: Buy };
 
 export default function ActivityPage() {
-  const { accountId, ready, connect } = useWallet();
+  const { signedIn } = useSession();
+  const [signIn, setSignIn] = useState(false);
   const [list, setList] = useState<Item[] | null>(null);
   const [currencies, setCurrencies] = useState<Currency[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -40,11 +42,12 @@ export default function ActivityPage() {
   }, []);
 
   useEffect(() => {
-    if (!accountId) return;
+    if (!signedIn) return;
     let cancelled = false;
     const load = () =>
-      Promise.all([api.swaps(accountId), api.buys(accountId).catch(() => [] as Buy[])])
-        .then(([sells, buys]) => {
+      api
+        .activity()
+        .then(({ cashouts: sells, buys }) => {
           if (!cancelled) {
             const items: Item[] = [
               ...sells.map((s) => ({ kind: "sell" as const, at: s.createdAt, s })),
@@ -63,28 +66,27 @@ export default function ActivityPage() {
       cancelled = true;
       clearInterval(t);
     };
-  }, [accountId]);
+  }, [signedIn]);
 
   return (
     <>
       <Topbar />
       <main className="mx-auto w-full max-w-3xl px-4 pb-12 lg:px-6">
         <PageTitle>Activity</PageTitle>
-        <p className="mt-1 text-sm text-muted-foreground">Every purchase and cash-out for your connected wallet.</p>
+        <p className="mt-1 text-sm text-muted-foreground">Every purchase and cash-out on your account.</p>
 
         <div className="mt-6">
-          {!accountId ? (
+          {!signedIn ? (
             <EmptyState
-              title="No wallet connected"
-              body="Connect the NEAR wallet you cash out from to see its history."
+              title="Sign in to see your activity"
+              body="Purchases and cash-outs on your account show up here."
               action={
                 <button
                   type="button"
-                  onClick={() => void connect()}
-                  disabled={!ready}
-                  className="focus-ring min-h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90 disabled:opacity-60"
+                  onClick={() => setSignIn(true)}
+                  className="focus-ring min-h-11 rounded-xl bg-foreground px-5 text-sm font-medium text-background hover:bg-foreground/90"
                 >
-                  Connect wallet
+                  Sign in with email
                 </button>
               }
             />
@@ -145,6 +147,7 @@ export default function ActivityPage() {
             </ul>
           )}
         </div>
+        <SignInDialog open={signIn} onClose={() => setSignIn(false)} />
       </main>
     </>
   );

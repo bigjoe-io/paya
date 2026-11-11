@@ -7,9 +7,9 @@ import { cn } from "@/lib/utils";
 
 const STEPS = [
   { label: "Order placed", detail: "Rate locked, payout reserved" },
-  { label: "NEAR sent", detail: "From your wallet to NEAR Intents" },
+  { label: "NEAR sent", detail: "From your Paya address to NEAR Intents" },
   { label: "Swapped to USDC", detail: "Delivered on Solana" },
-  { label: "Paying out", detail: "Local transfer to your recipient" },
+  { label: "Paying out", detail: "Local transfer to your bank" },
   { label: "Paid", detail: "In the account" },
 ];
 

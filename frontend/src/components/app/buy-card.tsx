@@ -1,13 +1,11 @@
 "use client";
 
-import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
+import { useEffect, useId, useMemo, useState, type FormEvent } from "react";
 import { ArrowDown, Check, ChevronDown, CheckCircle2, Clock, Copy, Info, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { NearIcon } from "@/components/landing/icons";
-import { useWallet } from "@/components/app/wallet-provider";
-import { useSession } from "@/components/app/session-provider";
+import { shortAddress, useAccount } from "@/components/app/account-provider";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
-import { api, ApiError, formatFiat, yoctoToNear, type Buy, type BuyQuote, type Currency } from "@/lib/api";
-import { unwrapTx, wnearBalance } from "@/lib/wnear";
+import { api, ApiError, formatFiat, type Buy, type BuyQuote, type Currency, type Me } from "@/lib/api";
 import { cn } from "@/lib/utils";
 
 /** Quick amounts per currency (roughly $3, $15, $35). */
@@ -23,9 +21,8 @@ const ISO: Record<string, string> = { NGN: "NG", GHS: "GH", KES: "KE", TZS: "TZ"
 const needsKyc = (msg: string) => /kyc|bvn|\bnin\b|verify your identity|identity verification/i.test(msg);
 
 /** Buy NEAR with a bank transfer. Paya never holds the money or the NEAR. */
-export function BuyCard({ currencies }: { currencies: Currency[] }) {
-  const { accountId, ready, connecting, connect } = useWallet();
-  const { signedIn } = useSession();
+export function BuyCard({ me, currencies }: { me: Me; currencies: Currency[] }) {
+  const { refresh } = useAccount();
   const [buyable, setBuyable] = useState<{ code: string; min: number }[] | null>(null);
   const [amount, setAmount] = useState("");
   const [code, setCode] = useState("NGN");
@@ -57,7 +54,7 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
     const run = () => {
       setQuoting(true);
       api
-        .buyQuote(fiat, code, accountId)
+        .buyQuote(fiat, code)
         .then((q) => {
           if (!cancelled) {
             setQuote(q);
@@ -81,14 +78,15 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
       clearTimeout(t);
       clearInterval(every);
     };
-  }, [fiat, code, accountId, signedIn, nonce]);
+  }, [fiat, code, me.verified, nonce]);
 
   async function onBuy() {
-    if (!accountId || !fiat) return;
+    if (!fiat) return;
     setError(null);
     setPlacing(true);
     try {
-      setOrder(await api.createBuy({ accountId, fiat, currency: code }));
+      setOrder(await api.createBuy({ fiat, currency: code }));
+      void refresh(); // auto cash-out is paused for purchases
     } catch (e) {
       const err = e as ApiError;
       if (err.code === "SIGN_IN") setDialog("signin");
@@ -100,16 +98,14 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
   }
 
   const cta = useMemo(() => {
-    if (!ready) return { label: "Loading wallets…", disabled: true };
-    if (!accountId) return { label: connecting ? "Connecting…" : "Connect wallet", disabled: connecting, action: () => void connect() };
     if (!fiat) return { label: "Enter an amount", disabled: true };
     if (quoting && !quote) return { label: "Getting the best rate…", disabled: true };
     if (!quote) return { label: "Rate unavailable", disabled: true };
-    if (!signedIn) return { label: "Verify email to buy", disabled: false, action: () => setDialog("signin") };
+    if (!me.verified) return { label: "Verify email to buy", disabled: false, action: () => setDialog("signin") };
     if (placing) return { label: "Locking the rate…", disabled: true };
     return { label: "Buy NEAR", disabled: false, action: () => void onBuy() };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, accountId, connecting, fiat, quoting, quote, signedIn, placing]);
+  }, [fiat, quoting, quote, me.verified, placing]);
 
   if (order && currency) {
     return (
@@ -230,9 +226,15 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
           </span>
         </div>
         <p className="mt-2 truncate text-xs text-muted-foreground">
-          {accountId ? `To ${accountId.length > 28 ? `${accountId.slice(0, 12)}…${accountId.slice(-8)}` : accountId}` : "To your connected wallet"}
+          To your Paya address {shortAddress(me.address)}
         </p>
       </div>
+
+      {me.autoCashout && (
+        <p className="mt-2 px-1 text-xs text-muted-foreground text-pretty">
+          Buying turns auto cash-out off, so the NEAR you buy stays in your balance. Turn it back on any time.
+        </p>
+      )}
 
       {soon.length > 0 && (
         <p className="mt-2 px-1 text-xs text-muted-foreground">
@@ -404,9 +406,8 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
         <>
           <p className="mt-5 flex items-center gap-2 rounded-xl bg-success-soft p-3 text-sm">
             <CheckCircle2 className="size-4 shrink-0 text-success" aria-hidden="true" />
-            {buy.demo ? "Simulated: no real NEAR was sent." : "Your NEAR has arrived."}
+            {buy.demo ? "Simulated: no real NEAR was sent." : "Your NEAR is in your Paya balance."}
           </p>
-          {!buy.demo && <UnwrapPrompt />}
         </>
       )}
 
@@ -442,47 +443,6 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
         )}
       </div>
       <p className="mt-3 text-center font-mono text-xs text-muted-foreground">Order {buy.id}</p>
-    </div>
-  );
-}
-
-/** If the NEAR arrived as wNEAR, offer to unwrap it. */
-function UnwrapPrompt() {
-  const { accountId, signAndSend, refreshBalance } = useWallet();
-  const [yocto, setYocto] = useState<string | null>(null);
-  const [state, setState] = useState<"idle" | "signing" | "done" | "error">("idle");
-
-  const load = useCallback(() => {
-    if (accountId) wnearBalance(accountId).then(setYocto).catch(() => undefined);
-  }, [accountId]);
-  useEffect(load, [load]);
-
-  const amount = yocto ? yoctoToNear(yocto) : 0;
-  if (!yocto || amount < 0.001 || state === "done") return null;
-
-  return (
-    <div className="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border p-3 text-sm">
-      <span className="text-pretty">
-        <span className="font-mono tabular-nums">{amount.toFixed(4)} wNEAR</span>{" "}
-        <span className="text-muted-foreground">(wrapped NEAR, same value)</span>
-      </span>
-      <button
-        type="button"
-        disabled={state === "signing"}
-        onClick={async () => {
-          setState("signing");
-          try {
-            await signAndSend(unwrapTx(yocto));
-            setState("done");
-            void refreshBalance();
-          } catch {
-            setState("error");
-          }
-        }}
-        className="focus-ring min-h-10 rounded-xl bg-foreground px-4 font-medium text-background hover:bg-foreground/90 disabled:opacity-60"
-      >
-        {state === "signing" ? "Confirm in wallet…" : state === "error" ? "Try again" : "Unwrap to NEAR"}
-      </button>
     </div>
   );
 }

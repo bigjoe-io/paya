@@ -5,14 +5,17 @@ import { ArrowRight, Mail, X } from "lucide-react";
 import { useSession } from "@/components/app/session-provider";
 
 /**
- * Email + one-time code. The code comes from the payout network, which keeps
- * the user's bank accounts and runs the payout under their own profile.
+ * Email + one-time code (sent by the payout network). Creates the Paya
+ * account on first sign-in; later, refreshes the payout session.
  */
 export function SignInDialog({ open, onClose, onSignedIn }: { open: boolean; onClose: () => void; onSignedIn?: () => void }) {
   const ref = useRef<HTMLDialogElement>(null);
-  const { startSignIn, verify } = useSession();
+  const { startSignIn, verify, email: current } = useSession();
   const [step, setStep] = useState<"email" | "code">("email");
-  const [email, setEmail] = useState("");
+  const [typed, setTyped] = useState<string | null>(null);
+  // Re-verifying an existing session: start from the account's email.
+  const email = typed ?? current ?? "";
+  const setEmail = setTyped;
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,11 +87,11 @@ export function SignInDialog({ open, onClose, onSignedIn }: { open: boolean; onC
           </button>
         </div>
         <h2 id={`${id}-title`} className="mt-4 text-lg font-semibold tracking-tight">
-          {step === "email" ? "Verify your email" : "Enter the code"}
+          {step === "email" ? "Sign in or create your account" : "Enter the code"}
         </h2>
         <p className="mt-1 text-sm text-muted-foreground text-pretty">
           {step === "email"
-            ? "Payouts run under your own verified profile. We'll email you a one-time code."
+            ? "New here? Your account and your own NEAR address are created the moment you verify. We'll email you a one-time code."
             : `We sent a code to ${email}.`}
         </p>
 

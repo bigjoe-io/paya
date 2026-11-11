@@ -12,6 +12,19 @@ const LABEL: Record<string, string> = {
   kyc_submitted: "KYC submitted",
   swap_created: "Swap created",
   swap_rejected: "Swap rejected",
+  account_created: "Account created",
+  bank_linked: "Bank linked",
+  bank_changed: "Bank changed",
+  auto_cashout_on: "Auto cash-out on",
+  auto_cashout_off: "Auto cash-out off",
+  auto_cashout_failed: "Auto cash-out failed",
+  cashout_sent: "Cash-out sent",
+  cashout_rejected: "Cash-out rejected",
+  withdraw_sent: "NEAR sent out",
+  withdraw_rejected: "Send rejected",
+  withdraw_code_failed: "Send code failed",
+  buy_created: "Buy created",
+  buy_rejected: "Buy rejected",
 };
 
 const tone = (t: string) =>

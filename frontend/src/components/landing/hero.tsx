@@ -12,7 +12,7 @@ export function Hero() {
           One click from NEAR to fiat.
         </h1>
         <p className="mt-4 max-w-md text-lg text-muted-foreground text-pretty">
-          Connect your wallet, pick a bank account, and cash lands in your local currency in minutes.
+          Sign up with your email, link your bank, and send NEAR to your own Paya address. Cash lands in your local currency in minutes.
         </p>
         <ButtonLink href="/app" className="mt-8">
           Open app

@@ -170,3 +170,34 @@ export const buys = {
   active: () =>
     buyStore.where((b) => BUY_ACTIVE.includes(b.status)).sort((a, b) => a.created_at.localeCompare(b.created_at)),
 };
+
+/* ---------- users: email ⇄ NEAR address ⇄ payout bank ---------- */
+
+export type User = {
+  id: string;
+  email: string; // lowercased; unique
+  key_index: number; // derives the NEAR key; unique, never reused
+  address: string; // implicit NEAR account (64 hex)
+  // payout bank (one per user, changeable)
+  currency: string | null;
+  bank_id: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  account_name: string | null;
+  auto_cashout: number; // 1 = cash out any NEAR that arrives
+  auto_paused_until: string | null; // back-off after a failed auto cash-out
+  paj_token_enc: string | null; // AES-GCM encrypted PAJ session
+  paj_expires_at: string | null;
+  created_at: string;
+  updated_at: string;
+  events?: SwapEvent[];
+};
+
+const userStore = createStore<User>(config.USERS_PATH, "user");
+
+export const users = {
+  ...userStore,
+  byEmail: (email: string) => userStore.find((u) => u.email === email.toLowerCase()),
+  byAddress: (address: string) => userStore.find((u) => u.address === address),
+  nextIndex: () => userStore.all().reduce((m, u) => Math.max(m, u.key_index + 1), 0),
+};

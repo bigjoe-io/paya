@@ -13,10 +13,10 @@ import { DRY_RECIPIENT, sizePayout } from "./quote.js";
  *                  PAJ off-ramp order for A USDC → deposit address + exact amount T
  *                  1Click EXACT_OUTPUT: deliver exactly T USDC to that address
  *                  → depositAddress + amountIn NEAR
- *  2. the user's wallet wraps amountIn NEAR and sends wNEAR to depositAddress
+ *  2. the user's Paya address wraps amountIn NEAR and sends wNEAR to depositAddress
  *  3. watcher      1Click SUCCESS → PAJ PAID → COMPLETED → paid
  *
- * Paya never holds the user's NEAR or USDC: wallet → Intents → PAJ.
+ * The NEAR moves: user's Paya address → Intents → USDC → PAJ → bank.
  */
 
 export type NewSwap = {
@@ -133,6 +133,12 @@ export async function recordDeposit(id: string, txHash: string) {
   return swaps.byId(id)!;
 }
 
+/** Our signing step failed before any NEAR moved: close the order with the reason. */
+export function failSwap(id: string, message: string) {
+  const s = swaps.byId(id);
+  if (s) set(s, "failed", { error: message, paj_token: null });
+}
+
 /* ---------- watcher ---------- */
 
 export function startWatcher() {
@@ -170,7 +176,7 @@ async function advance(s: Swap) {
       swaps.event(s.id, "swap_status", { status: st });
     }
     if (st === "SUCCESS") set(s, "paying");
-    else if (st === "REFUNDED") set(s, "refunded", { error: "The swap couldn't complete; your NEAR was returned to your wallet" });
+    else if (st === "REFUNDED") set(s, "refunded", { error: "The swap couldn't complete; your NEAR was returned to your Paya balance" });
     else if (st === "FAILED" || st === "INCOMPLETE_DEPOSIT") set(s, "failed", { error: `Swap ${st.toLowerCase()}` });
     return;
   }

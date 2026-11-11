@@ -57,6 +57,31 @@ export type Stats = {
   liveOrders: boolean;
 };
 
+export type AdminUser = {
+  id: string;
+  email: string;
+  key_index: number;
+  address: string;
+  currency: string | null;
+  bank_id: string | null;
+  bank_name: string | null;
+  account_number: string | null;
+  account_name: string | null;
+  auto_cashout: number;
+  auto_paused_until: string | null;
+  paj_expires_at: string | null;
+  has_paj_session: boolean;
+  created_at: string;
+  updated_at: string;
+  events?: SwapEvent[];
+};
+
+export type AdminUserDetail = AdminUser & {
+  onchain: { exists: boolean; near: number; wnear: number } | null;
+  cashouts: AdminSwap[];
+  buys: { id: string; status: string; fiat_amount: number; currency: string; created_at: string; demo: number }[];
+};
+
 export type AuditEntry = { at: string; type: string; actor?: string; detail?: Record<string, unknown> };
 
 export class RelayError extends Error {}
@@ -91,5 +116,7 @@ export const relay = {
   swap: (id: string) => call<AdminSwap>(`/swaps/${encodeURIComponent(id)}`),
   recheck: (id: string) =>
     call<{ checkedAt: string; swap: string | null; note?: string }>(`/swaps/${encodeURIComponent(id)}/recheck`, { method: "POST" }),
+  users: (q?: string) => call<AdminUser[]>(`/users${q ? `?q=${encodeURIComponent(q)}` : ""}`),
+  user: (id: string) => call<AdminUserDetail>(`/users/${encodeURIComponent(id)}`),
   audit: (q?: string) => call<AuditEntry[]>(`/audit?limit=500${q ? `&q=${encodeURIComponent(q)}` : ""}`),
 };

@@ -49,9 +49,36 @@ const schema = z.object({
    */
   ADMIN_TOKEN: z.string().min(32, "ADMIN_TOKEN must be at least 32 characters").optional(),
 
+  /**
+   * Custody. 32 random bytes as hex (openssl rand -hex 32). Every user's NEAR
+   * address and key is derived from this. Losing it loses access to users'
+   * funds; leaking it gives access to them. Back it up offline.
+   */
+  MASTER_SEED: z.string().regex(/^[0-9a-f]{64}$/i, "MASTER_SEED must be 64 hex characters").optional(),
+  /** Encrypts stored PAJ session tokens (AES-256-GCM). 64 hex characters. */
+  DATA_KEY: z.string().regex(/^[0-9a-f]{64}$/i, "DATA_KEY must be 64 hex characters").optional(),
+  /** Signs Paya app sessions (HMAC). At least 32 characters. */
+  SESSION_SECRET: z.string().min(32, "SESSION_SECRET must be at least 32 characters").optional(),
+
+  /**
+   * Optional NEAR account that pays a tiny one-off amount (0.01 NEAR) to
+   * activate a new user's address before their first purchase, so it can
+   * sign. Without it, buys still work once the address has received NEAR.
+   */
+  TREASURY_ACCOUNT_ID: z.string().optional(),
+  TREASURY_PRIVATE_KEY: z.string().regex(/^ed25519:/, "TREASURY_PRIVATE_KEY must start with ed25519:").optional(),
+
+  /** Auto cash-out starts at this much spendable NEAR. */
+  AUTO_MIN_NEAR: z.coerce.number().min(0.1).default(0.4),
+  /** NEAR left in each address for fees. */
+  RESERVE_NEAR: z.coerce.number().min(0.01).default(0.05),
+
   PORT: z.coerce.number().int().default(8787),
   DB_PATH: z.string().default("./paya-data.json"),
   BUYS_PATH: z.string().default("./paya-buys.json"),
+  USERS_PATH: z.string().default("./paya-users.json"),
+  /** How often deposit addresses are checked for incoming NEAR. */
+  DEPOSIT_POLL_MS: z.coerce.number().int().min(5000).default(15000),
   POLL_MS: z.coerce.number().int().min(2000).default(5000),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 });
@@ -62,6 +89,13 @@ if (!parsed.success) {
   process.exit(1);
 }
 const env = parsed.data;
+
+// Accounts can't work without these three; refuse to start half-configured.
+const missing = (["MASTER_SEED", "DATA_KEY", "SESSION_SECRET"] as const).filter((k) => !env[k]);
+if (missing.length) {
+  console.error(`Missing ${missing.join(", ")}. Generate each with: openssl rand -hex 32`);
+  process.exit(1);
+}
 
 export const config = {
   ...env,

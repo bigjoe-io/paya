@@ -2,16 +2,19 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { ArrowLeftRight, Clock, LogOut, MessageSquare, TrendingUp, Users, Wallet } from "lucide-react";
+import { useState } from "react";
+import { ArrowLeftRight, CircleUser, Clock, LogIn, LogOut, MessageSquare, TrendingUp } from "lucide-react";
 import { Logo } from "@/components/logo";
-import { useWallet } from "@/components/app/wallet-provider";
+import { shortAddress, useAccount } from "@/components/app/account-provider";
+import { useSession } from "@/components/app/session-provider";
+import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { cn } from "@/lib/utils";
 
 const main = [{ href: "/app", label: "Swap", icon: ArrowLeftRight }];
 const markets = [{ href: "/app/earn", label: "Earn", icon: TrendingUp, soon: true }];
 const more = [
   { href: "/app/activity", label: "Activity", icon: Clock },
-  { href: "/app/recipients", label: "Recipients", icon: Users },
+  { href: "/app/account", label: "Account", icon: CircleUser },
 ];
 
 export const allNav = [...main, ...markets, ...more];
@@ -20,7 +23,6 @@ function isActive(pathname: string, href: string) {
   return href === "/app" ? pathname === "/app" : pathname.startsWith(href);
 }
 
-export const shortAccount = (a: string) => (a.length > 20 ? `${a.slice(0, 8)}…${a.slice(-6)}` : a);
 
 export function Sidebar() {
   const pathname = usePathname();
@@ -45,43 +47,49 @@ export function Sidebar() {
         Give feedback
       </a>
 
-      <WalletCard />
+      <AccountCard />
     </aside>
   );
 }
 
-function WalletCard() {
-  const { accountId, ready, connecting, connect, disconnect } = useWallet();
+function AccountCard() {
+  const { signedIn, email, signOut } = useSession();
+  const { me } = useAccount();
+  const [open, setOpen] = useState(false);
 
-  if (!accountId) {
+  if (!signedIn) {
     return (
-      <button
-        type="button"
-        onClick={() => void connect()}
-        disabled={!ready || connecting}
-        className="focus-ring mt-2 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:opacity-60"
-      >
-        <Wallet className="size-4" aria-hidden="true" />
-        {connecting ? "Connecting…" : "Connect wallet"}
-      </button>
+      <>
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="focus-ring mt-2 inline-flex min-h-12 w-full items-center justify-center gap-2 rounded-2xl bg-foreground text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90"
+        >
+          <LogIn className="size-4" aria-hidden="true" />
+          Sign in with email
+        </button>
+        <SignInDialog open={open} onClose={() => setOpen(false)} />
+      </>
     );
   }
 
   return (
     <div className="glass-card mt-2 rounded-2xl p-3">
-      <div className="flex items-center gap-2">
-        <span className="size-2 rounded-full bg-success" aria-hidden="true" />
-        <p className="truncate font-mono text-sm tabular-nums" title={accountId}>
-          {shortAccount(accountId)}
+      <Link href="/app/account" className="focus-ring block rounded-lg">
+        <p className="truncate text-sm font-medium" title={email ?? undefined}>
+          {email}
         </p>
-      </div>
+        <p className="mt-0.5 truncate font-mono text-xs text-muted-foreground tabular-nums" title={me?.address}>
+          {me ? shortAddress(me.address) : "…"}
+        </p>
+      </Link>
       <button
         type="button"
-        onClick={() => void disconnect()}
+        onClick={signOut}
         className="focus-ring mt-2 inline-flex min-h-9 items-center gap-2 rounded-lg px-2 text-xs text-muted-foreground transition-colors duration-100 hover:text-foreground"
       >
         <LogOut className="size-3.5" aria-hidden="true" />
-        Disconnect
+        Sign out
       </button>
     </div>
   );

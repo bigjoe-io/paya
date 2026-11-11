@@ -4,7 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { NearIcon, TokenIcon } from "@/components/landing/icons";
-import { useWallet } from "@/components/app/wallet-provider";
+import { useAccount } from "@/components/app/account-provider";
 type TokenSymbol = "NEAR" | "USDC" | "SOL";
 import { cn } from "@/lib/utils";
 
@@ -106,7 +106,7 @@ export function Amount({
   className?: string;
   dots?: number;
 }) {
-  const { hidden } = useWallet();
+  const { hidden } = useAccount();
   if (hidden) return <Dots count={dots} className={className} label="Hidden" />;
   return <span className={cn("font-mono tabular-nums", className)}>{children}</span>;
 }

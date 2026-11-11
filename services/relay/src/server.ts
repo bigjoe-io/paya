@@ -2,25 +2,22 @@ import { Hono, type Context } from "hono";
 import { cors } from "hono/cors";
 import { z } from "zod";
 import { config } from "./config.js";
-import { swaps, type Swap } from "./db.js";
+import { swaps, users, type Swap, type User } from "./db.js";
 import { log } from "./log.js";
 import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { preview } from "./quote.js";
-import { applyPayout, createSwap, recordDeposit } from "./swaps.js";
+import { applyPayout } from "./swaps.js";
 import { BUY_CURRENCIES, MIN_BUY, createBuy, markSent, previewBuy } from "./buys.js";
 import { buys, type Buy } from "./db.js";
 import { admin } from "./admin.js";
 import { audit, last4 } from "./audit.js";
+import { accountView, cashOut, pajTokenOf, requirePaj, setAuto, setBank, signIn, withdraw } from "./accounts.js";
+import { createSession, readSession } from "./secrets.js";
+import { accountExists, fundFromTreasury, toYocto } from "./near.js";
 
 export const app = new Hono();
 
-/** Which email a PAJ session belongs to, for the audit log (memory only; never persisted). */
-const sessionEmail = new Map<string, string>();
-const actorOf = (c: Context) => {
-  const t = (c.req.header("authorization") ?? "").replace(/^Bearer /, "");
-  return (t && sessionEmail.get(t)) || undefined;
-};
 
 // Listed origins always; any localhost port while orders are simulated.
 const LOCALHOST = /^http:\/\/(localhost|127\.0\.0\.1):\d+$/;
@@ -52,15 +49,21 @@ const currency = z
   .refine((s) => s !== "USD", "USD payouts are coming soon")
   .refine((s) => Boolean(COUNTRY[s]), "Unsupported currency");
 
-/** The user's PAJ session, sent by the frontend as a Bearer token. */
-function session(c: Context, required: true): string;
-function session(c: Context, required?: false): string | undefined;
-function session(c: Context, required = false) {
+/** The signed-in Paya account (Bearer = Paya session token). */
+function me(c: Context, required: true): User;
+function me(c: Context, required?: false): User | undefined;
+function me(c: Context, required = false) {
   const h = c.req.header("authorization") ?? "";
-  const t = h.startsWith("Bearer ") ? h.slice(7).trim() : undefined;
-  if (required && !t) throw new PajError("Sign in first", 401);
-  return t;
+  const uid = h.startsWith("Bearer ") ? readSession(h.slice(7).trim()) : null;
+  const u = uid ? users.byId(uid) : undefined;
+  if (required && !u) throw new PajError("Sign in first", 401);
+  return u;
 }
+/** PAJ session of the signed-in user, if any (for pricing). */
+const pajOf = (c: Context) => {
+  const u = me(c);
+  return u ? (pajTokenOf(u) ?? undefined) : undefined;
+};
 
 /* ---------- reference ---------- */
 
@@ -91,7 +94,8 @@ app.get("/quote", async (c) => {
   const q = z
     .object({ near: z.coerce.number().positive().max(1_000_000), currency, account: accountId.optional() })
     .parse(c.req.query());
-  return c.json(await preview(q.near, q.currency, q.account ?? "near", session(c)));
+  const u = me(c);
+  return c.json(await preview(q.near, q.currency, u?.address ?? q.account ?? "near", pajOf(c)));
 });
 
 /* ---------- PAJ session (email OTP) ---------- */
@@ -116,17 +120,18 @@ app.post("/auth/verify", async (c) => {
     audit("sign_in_failed", b.email, { error: (e as Error).message });
     throw e;
   }
-  sessionEmail.set(v.token, b.email);
-  audit("signed_in", b.email, { device: b.deviceId.slice(0, 8), expiresAt: v.expiresAt });
-  log("auth", `session for ${b.email} until ${v.expiresAt}`);
-  return c.json({ token: v.token, expiresAt: v.expiresAt, email: b.email });
+  const u = signIn(b.email, v.token, v.expiresAt);
+  const session = createSession(u.id);
+  audit("signed_in", b.email, { device: b.deviceId.slice(0, 8), pajExpiresAt: v.expiresAt });
+  log("auth", `${u.id} signed in (PAJ session until ${v.expiresAt})`);
+  return c.json({ token: session.token, expiresAt: session.expiresAt, email: u.email });
 });
 
 /* ---------- banks (user session) ---------- */
 
 app.get("/banks", async (c) => {
   const cur = currency.parse(c.req.query("currency") ?? "NGN");
-  const all = await paj.banks(session(c, true));
+  const all = await paj.banks(requirePaj(me(c, true)));
   const iso = COUNTRY[cur].iso;
   // PAJ may label a bank's country as "NG", "Nigeria" or "NGN".
   const match = new Set([iso, COUNTRY[cur].country, cur].map((x) => x.toLowerCase()));
@@ -136,16 +141,17 @@ app.get("/banks", async (c) => {
 
 app.post("/bank-accounts/resolve", async (c) => {
   const b = z.object({ bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) }).parse(await c.req.json());
-  const r = await paj.resolveAccount(session(c, true), b.bankId, b.accountNumber);
+  const r = await paj.resolveAccount(requirePaj(me(c, true)), b.bankId, b.accountNumber);
   return c.json({ accountName: r.accountName, accountNumber: r.accountNumber, bank: r.bank });
 });
 
-app.get("/bank-accounts", async (c) => c.json(await paj.savedAccounts(session(c, true))));
+app.get("/bank-accounts", async (c) => c.json(await paj.savedAccounts(requirePaj(me(c, true)))));
 
 app.post("/bank-accounts", async (c) => {
   const b = z.object({ bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) }).parse(await c.req.json());
-  const saved = await paj.saveAccount(session(c, true), b.bankId, b.accountNumber);
-  audit("bank_account_saved", actorOf(c), { bankId: b.bankId, account: last4(b.accountNumber), name: saved.accountName });
+  const u = me(c, true);
+  const saved = await paj.saveAccount(requirePaj(u), b.bankId, b.accountNumber);
+  audit("bank_account_saved", u.email, { bankId: b.bankId, account: last4(b.accountNumber), name: saved.accountName });
   return c.json(saved);
 });
 
@@ -153,59 +159,87 @@ app.post("/kyc", async (c) => {
   const b = z
     .object({ idType: z.enum(["BVN", "NIN"]), idNumber: z.string().regex(/^\d{11}$/, "11 digits"), country: z.string().length(2) })
     .parse(await c.req.json());
-  const r = await paj.submitKyc(session(c, true), b.idType, b.idNumber, b.country);
-  audit("kyc_submitted", actorOf(c), { idType: b.idType, country: b.country }); // never the ID number
+  const u = me(c, true);
+  const r = await paj.submitKyc(requirePaj(u), b.idType, b.idNumber, b.country);
+  audit("kyc_submitted", u.email, { idType: b.idType, country: b.country }); // never the ID number
   return c.json(r);
 });
 
-/* ---------- swaps ---------- */
+/* ---------- the signed-in account ---------- */
 
-app.post("/swaps", async (c) => {
+app.get("/me", async (c) => c.json(await accountView(me(c, true))));
+
+/** Link or change the payout bank. The name comes from the bank, not the client. */
+app.put("/me/bank", async (c) => {
   const b = z
-    .object({
-      accountId,
-      near: z.number().positive().max(1_000_000),
-      currency,
-      bankId: z.string().min(1),
-      bankName: z.string().min(1).max(120),
-      accountNumber: z.string().regex(/^\d{6,20}$/),
-      accountName: z.string().min(2).max(120),
-    })
+    .object({ currency, bankId: z.string().min(1), accountNumber: z.string().regex(/^\d{6,20}$/) })
     .parse(await c.req.json());
-  let created;
+  return c.json(await accountView(await setBank(me(c, true), b)));
+});
+
+app.put("/me/auto", async (c) => {
+  const { enabled } = z.object({ enabled: z.boolean() }).parse(await c.req.json());
+  const u = me(c, true);
+  if (enabled && !u.bank_id) throw new Error("Link a bank account first");
+  return c.json(await accountView(setAuto(u, enabled)));
+});
+
+/** Cash out from the Paya balance to the linked bank. */
+app.post("/cashout", async (c) => {
+  const { near } = z.object({ near: z.number().positive().max(1_000_000) }).parse(await c.req.json());
+  const u = me(c, true);
   try {
-    created = await createSwap(b, session(c, true));
+    return c.json(publicSwap(await cashOut(u, near, "manual")));
   } catch (e) {
-    // The user tried and was refused before any record existed: keep it for support.
-    audit("swap_rejected", actorOf(c) ?? b.accountId, {
-      wallet: b.accountId,
-      near: b.near,
-      currency: b.currency,
-      bank: b.bankName,
-      account: last4(b.accountNumber),
-      error: (e as Error).message,
-    });
+    audit("cashout_rejected", u.email, { near, error: (e as Error).message });
     throw e;
   }
-  const { swap, deposit } = created;
-  audit("swap_created", actorOf(c) ?? b.accountId, { swapId: swap.id, wallet: b.accountId, near: b.near, currency: b.currency, simulated: Boolean(swap.demo) });
+});
+
+/**
+ * Send NEAR to another address. Needs a fresh email code every time: a stolen
+ * app session alone can't move money anywhere but the user's own bank.
+ */
+app.post("/me/withdraw", async (c) => {
+  const b = z
+    .object({
+      to: z.string().min(2).max(64),
+      near: z.number().positive().max(1_000_000),
+      otp: z.string().regex(/^\d{4,8}$/, "Enter the code from the email"),
+      deviceId: z.string().min(8).max(100),
+    })
+    .parse(await c.req.json());
+  const u = me(c, true);
+  let v;
+  try {
+    v = await paj.verifySession(u.email, b.otp, b.deviceId);
+  } catch (e) {
+    audit("withdraw_code_failed", u.email, { error: (e as Error).message });
+    throw new Error("That code didn't work. Request a new one.");
+  }
+  signIn(u.email, v.token, v.expiresAt); // refreshes the stored PAJ session
+  try {
+    return c.json(await withdraw(users.byId(u.id)!, b.to, b.near));
+  } catch (e) {
+    audit("withdraw_rejected", u.email, { to: b.to, near: b.near, error: (e as Error).message });
+    throw e;
+  }
+});
+
+app.get("/me/activity", (c) => {
+  const u = me(c, true);
   return c.json({
-    swap: publicSwap(swap),
-    transaction: deposit ? wrapAndSend(deposit.depositAddress, deposit.amountYocto) : null,
+    cashouts: swaps.forAccount(u.address).map(publicSwap),
+    buys: buys.forAccount(u.address).map(publicBuy),
   });
 });
 
-app.post("/swaps/:id/deposit", async (c) => {
-  const { txHash } = z.object({ txHash: z.string().min(4) }).parse(await c.req.json());
-  return c.json(publicSwap(await recordDeposit(c.req.param("id"), txHash)));
-});
-
+/** Owner-only: a cash-out's live status. */
 app.get("/swaps/:id", (c) => {
+  const u = me(c, true);
   const s = swaps.byId(c.req.param("id"));
-  return s ? c.json(publicSwap(s)) : c.json({ error: "Not found" }, 404);
+  return s && s.account_id === u.address ? c.json(publicSwap(s)) : c.json({ error: "Not found" }, 404);
 });
-
-app.get("/swaps", (c) => c.json(swaps.forAccount(accountId.parse(c.req.query("account"))).map(publicSwap)));
 
 /* ---------- buy: fiat → NEAR ---------- */
 
@@ -219,36 +253,56 @@ app.get("/buy/quote", async (c) => {
       account: accountId.optional(),
     })
     .parse(c.req.query());
-  return c.json(await previewBuy(q.fiat, q.currency, q.account ?? "near", session(c)));
+  const u = me(c);
+  return c.json(await previewBuy(q.fiat, q.currency, u?.address ?? q.account ?? "near", pajOf(c)));
 });
 
 app.post("/buys", async (c) => {
   const b = z
     .object({
-      accountId,
       fiat: z.number().positive().max(50_000_000),
       currency: z.string().length(3).transform((s) => s.toUpperCase()),
     })
     .parse(await c.req.json());
+  let u = me(c, true);
+  const token = requirePaj(u);
+  // Bought NEAR should stay in the balance, not be sold straight back.
+  if (u.auto_cashout) {
+    u = setAuto(u, false);
+    users.event(u.id, "auto_paused_for_buy");
+  }
   let buy;
   try {
-    buy = await createBuy(b, session(c, true));
+    buy = await createBuy({ accountId: u.address, fiat: b.fiat, currency: b.currency }, token);
   } catch (e) {
-    audit("buy_rejected", actorOf(c) ?? b.accountId, { wallet: b.accountId, fiat: b.fiat, currency: b.currency, error: (e as Error).message });
+    audit("buy_rejected", u.email, { fiat: b.fiat, currency: b.currency, error: (e as Error).message });
     throw e;
   }
-  audit("buy_created", actorOf(c) ?? b.accountId, { buyId: buy.id, wallet: b.accountId, fiat: b.fiat, currency: b.currency, simulated: Boolean(buy.demo) });
+  audit("buy_created", u.email, { buyId: buy.id, address: u.address, fiat: b.fiat, currency: b.currency, simulated: Boolean(buy.demo) });
+  // A brand-new address can't sign until it holds a little NEAR (needed if the purchase lands as wNEAR).
+  if (!buy.demo && config.TREASURY_ACCOUNT_ID && !(await accountExists(u.address).catch(() => true))) {
+    fundFromTreasury(u.address, toYocto(0.01))
+      .then((tx) => users.event(u.id, "activated", { tx }))
+      .catch((e: Error) => log("treasury", `activation failed for ${u.id}: ${e.message}`));
+  }
   return c.json(publicBuy(buy));
 });
 
-app.post("/buys/:id/sent", (c) => c.json(publicBuy(markSent(c.req.param("id")))));
+const ownBuy = (c: Context) => {
+  const u = me(c, true);
+  const b = buys.byId(c.req.param("id") ?? "");
+  return b && b.account_id === u.address ? b : null;
+};
 
-app.get("/buys/:id", (c) => {
-  const b = buys.byId(c.req.param("id"));
-  return b ? c.json(publicBuy(b)) : c.json({ error: "Not found" }, 404);
+app.post("/buys/:id/sent", (c) => {
+  const b = ownBuy(c);
+  return b ? c.json(publicBuy(markSent(b.id))) : c.json({ error: "Not found" }, 404);
 });
 
-app.get("/buys", (c) => c.json(buys.forAccount(accountId.parse(c.req.query("account"))).map(publicBuy)));
+app.get("/buys/:id", (c) => {
+  const b = ownBuy(c);
+  return b ? c.json(publicBuy(b)) : c.json({ error: "Not found" }, 404);
+});
 
 /* ---------- admin (server-to-server, token-protected) ---------- */
 
@@ -269,28 +323,6 @@ app.post("/webhooks/paj", async (c) => {
 });
 
 /* ---------- shapes ---------- */
-
-/**
- * One transaction, all actions on wrap.near: register the user and the
- * deposit address (no-ops if already registered; deposit refunded), wrap the
- * NEAR, send it to the Intents deposit address.
- */
-function wrapAndSend(depositAddress: string, amountYocto: string) {
-  const fc = (methodName: string, args: object, deposit: string) => ({
-    type: "FunctionCall" as const,
-    params: { methodName, args, gas: "30000000000000", deposit },
-  });
-  return {
-    receiverId: "wrap.near",
-    actions: [
-      // Register the user first: otherwise near_deposit deducts storage from the wrapped amount.
-      fc("storage_deposit", { registration_only: true }, "1250000000000000000000"),
-      fc("storage_deposit", { account_id: depositAddress, registration_only: true }, "1250000000000000000000"),
-      fc("near_deposit", {}, amountYocto),
-      fc("ft_transfer", { receiver_id: depositAddress, amount: amountYocto, memo: "paya" }, "1"),
-    ],
-  };
-}
 
 function publicBuy(b: Buy) {
   const toNear = (y: string) => Number(BigInt(y) / 10n ** 18n) / 1e6;

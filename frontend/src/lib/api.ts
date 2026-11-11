@@ -1,7 +1,6 @@
 /**
- * Client for the Paya relay (services/relay). Two identities: the connected
- * NEAR wallet (signs the only transaction that moves money) and the user's
- * PAJ session from email sign-in (banks, name lookup, payout orders).
+ * Client for the Paya relay (services/relay). One identity: the Paya account
+ * from email sign-in. It owns a NEAR address and a linked payout bank.
  */
 export const RELAY_URL = process.env.NEXT_PUBLIC_RELAY_URL ?? "http://localhost:8787";
 
@@ -80,10 +79,23 @@ export type Buy = {
   updatedAt: string;
 };
 
-/** The one transaction the wallet signs (all actions on wrap.near). */
-export type WalletTx = {
-  receiverId: string;
-  actions: { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }[];
+export type LinkedBank = { currency: string; bankId: string; bankName: string; accountNumber: string; accountName: string };
+
+/** The signed-in account. NEAR amounts are in NEAR. */
+export type Me = {
+  email: string;
+  address: string;
+  exists: boolean;
+  balance: number;
+  spendable: number;
+  wnear: number;
+  reserve: number;
+  autoMin: number;
+  bank: LinkedBank | null;
+  autoCashout: boolean;
+  autoPausedUntil: string | null;
+  /** false = the payout session expired; verify the email again to cash out or buy. */
+  verified: boolean;
 };
 
 export class ApiError extends Error {
@@ -125,8 +137,7 @@ export const api = {
   health: () => request<{ ok: boolean; demo: boolean; feePercent: number }>("/health"),
   currencies: () => request<Currency[]>("/currencies"),
   prices: () => request<{ nearUsd: number; ngnPerUsd: number | null }>("/prices"),
-  quote: (near: number, currency: string, account?: string | null) =>
-    request<Quote>(`/quote?near=${near}&currency=${currency}${account ? `&account=${account}` : ""}`),
+  quote: (near: number, currency: string) => request<Quote>(`/quote?near=${near}&currency=${currency}`),
 
   startSignIn: (email: string) => request<{ sent: boolean }>("/auth/start", { method: "POST", body: JSON.stringify({ email }) }),
   verifySignIn: (email: string, otp: string, deviceId: string) =>
@@ -147,28 +158,22 @@ export const api = {
   submitKyc: (idType: "BVN" | "NIN", idNumber: string, country: string) =>
     request<{ message: string }>("/kyc", { method: "POST", body: JSON.stringify({ idType, idNumber, country }) }),
 
-  createSwap: (b: {
-    accountId: string;
-    near: number;
-    currency: string;
-    bankId: string;
-    bankName: string;
-    accountNumber: string;
-    accountName: string;
-  }) => request<{ swap: Swap; transaction: WalletTx | null }>("/swaps", { method: "POST", body: JSON.stringify(b) }),
-  recordDeposit: (id: string, txHash: string) =>
-    request<Swap>(`/swaps/${id}/deposit`, { method: "POST", body: JSON.stringify({ txHash }) }),
+  me: () => request<Me>("/me"),
+  setBank: (b: { currency: string; bankId: string; accountNumber: string }) =>
+    request<Me>("/me/bank", { method: "PUT", body: JSON.stringify(b) }),
+  setAuto: (enabled: boolean) => request<Me>("/me/auto", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  cashOut: (near: number) => request<Swap>("/cashout", { method: "POST", body: JSON.stringify({ near }) }),
+  withdraw: (b: { to: string; near: number; otp: string; deviceId: string }) =>
+    request<{ txHash: string }>("/me/withdraw", { method: "POST", body: JSON.stringify(b) }),
+  activity: () => request<{ cashouts: Swap[]; buys: Buy[] }>("/me/activity"),
   swap: (id: string) => request<Swap>(`/swaps/${id}`),
-  swaps: (account: string) => request<Swap[]>(`/swaps?account=${account}`),
 
   buyCurrencies: () => request<{ code: string; min: number }[]>("/buy/currencies"),
-  buyQuote: (fiat: number, currency: string, account?: string | null) =>
-    request<BuyQuote>(`/buy/quote?fiat=${fiat}&currency=${currency}${account ? `&account=${account}` : ""}`),
-  createBuy: (b: { accountId: string; fiat: number; currency: string }) =>
+  buyQuote: (fiat: number, currency: string) => request<BuyQuote>(`/buy/quote?fiat=${fiat}&currency=${currency}`),
+  createBuy: (b: { fiat: number; currency: string }) =>
     request<Buy>("/buys", { method: "POST", body: JSON.stringify(b) }),
   markBuySent: (id: string) => request<Buy>(`/buys/${id}/sent`, { method: "POST" }),
   buy: (id: string) => request<Buy>(`/buys/${id}`),
-  buys: (account: string) => request<Buy[]>(`/buys?account=${account}`),
 };
 
 export function formatFiat(amount: number, currency: Pick<Currency, "symbol" | "code"> | string) {

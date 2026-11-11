@@ -11,8 +11,8 @@ export function Bento() {
       <div className="mx-auto max-w-2xl text-center">
         <h2 className="text-3xl font-semibold tracking-tight text-balance md:text-4xl">Paya isn&apos;t another exchange.</h2>
         <p className="mt-3 text-muted-foreground text-pretty">
-          No P2P chats, no order books, no waiting on a trader. Your NEAR goes from your wallet to your bank account in a
-          single transaction, and we never hold it.
+          No P2P chats, no order books, no waiting on a trader. Send NEAR to your own Paya address and it lands in your
+          bank account automatically.
         </p>
       </div>
 
@@ -26,7 +26,7 @@ export function Bento() {
             <span className="-ml-2 flex size-9 items-center justify-center rounded-full bg-success text-sm font-semibold text-white ring-4 ring-background">
               ₦
             </span>
-            <span className="ml-2.5 text-xs text-muted-foreground">1 signature</span>
+            <span className="ml-2.5 text-xs text-muted-foreground">automatic</span>
           </span>
         </Tile>
         <Tile title={<>Real names,<br />checked with the bank</>}>
@@ -44,7 +44,7 @@ export function Bento() {
             <span className="rounded-full bg-success-soft px-1.5 py-0.5 text-[10px] text-success">live</span>
           </span>
         </Tile>
-        <Tile title={<>Non-custodial<br />by design</>}>
+        <Tile title={<>Every transfer<br />on-chain</>}>
           <span className="flex size-12 items-center justify-center rounded-2xl bg-accent-soft">
             <ShieldCheck className="size-6 text-accent" aria-hidden="true" />
           </span>
@@ -56,7 +56,7 @@ export function Bento() {
 
 function FlowTile() {
   const steps = [
-    { label: "Your wallet", sub: "NEAR" },
+    { label: "Your Paya address", sub: "NEAR" },
     { label: "NEAR Intents", sub: "→ USDC" },
     { label: "Your bank", sub: "₦ · GH₵ · KSh" },
   ];
@@ -83,7 +83,7 @@ function FlowTile() {
           ))}
         </ol>
         <p className="mt-10 max-w-xs text-2xl font-medium text-pretty">
-          From your wallet <span className="text-white/65">to your bank account in a single transaction</span>
+          Send NEAR <span className="text-white/65">and it reaches your bank account automatically</span>
         </p>
       </div>
     </article>

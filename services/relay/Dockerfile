@@ -6,8 +6,9 @@ COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm install --no-save tsx@4
 COPY tsconfig.json ./
 COPY src ./src
-ENV NODE_ENV=production PORT=8787 DB_PATH=/data/paya-data.json AUDIT_PATH=/data/paya-audit.jsonl BUYS_PATH=/data/paya-buys.json
-# Mount a persistent volume at /data so swap records survive restarts.
+ENV NODE_ENV=production PORT=8787 DB_PATH=/data/paya-data.json AUDIT_PATH=/data/paya-audit.jsonl BUYS_PATH=/data/paya-buys.json USERS_PATH=/data/paya-users.json
+# Mount a persistent volume at /data so accounts, swaps and buys survive restarts.
+# Run exactly ONE instance: the watchers and the JSON store are single-process.
 VOLUME ["/data"]
 EXPOSE 8787
 CMD ["npx", "tsx", "src/index.ts"]

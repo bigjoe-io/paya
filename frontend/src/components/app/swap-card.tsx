@@ -1,55 +1,52 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useId, useMemo, useState } from "react";
-import { ArrowDown, ChevronDown, Info, Plus, RefreshCw, Wallet } from "lucide-react";
+import { ArrowDown, Info, Landmark, RefreshCw } from "lucide-react";
 import { NearIcon } from "@/components/landing/icons";
-import { useWallet } from "@/components/app/wallet-provider";
-import { useSession } from "@/components/app/session-provider";
-import { RecipientDialog } from "@/components/app/recipient-dialog";
+import { useAccount } from "@/components/app/account-provider";
+import { AddressCard } from "@/components/app/address-card";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { SwapProgress, useSwap } from "@/components/app/swap-progress";
-import { api, ApiError, formatFiat, type Currency, type Quote, type Swap } from "@/lib/api";
-import { maskAccount, type Recipient } from "@/lib/recipients";
+import { api, ApiError, formatFiat, type Currency, type Me, type Quote, type Swap } from "@/lib/api";
+import { maskAccount } from "@/lib/recipients";
 import { cn } from "@/lib/utils";
 
-/** NEAR kept back for gas and wNEAR storage registration. */
-const GAS_RESERVE = 0.05;
+type Phase = { name: "edit" } | { name: "sending" } | { name: "tracking"; swap: Swap };
 
-type Phase = { name: "edit" } | { name: "placing" } | { name: "signing"; swap: Swap } | { name: "tracking"; swap: Swap };
-
-export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; onCurrency?: (c: Currency) => void }) {
-  const { accountId, balance, ready, connecting, connect, signAndSend, refreshBalance } = useWallet();
-  const { signedIn } = useSession();
+/**
+ * Sell: NEAR in the user's Paya address → their linked bank.
+ * Sending NEAR to the address cashes it out automatically (when auto is on);
+ * the form below cashes out any balance on demand.
+ */
+export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] }) {
+  const { setMe, refresh } = useAccount();
+  const bank = me.bank!;
+  const currency = currencies.find((c) => c.code === bank.currency) ?? currencies[0];
   const [amount, setAmount] = useState("");
-  const [code, setCode] = useState("NGN");
-  const [recipient, setRecipient] = useState<Recipient | null>(null);
   const [rawQuote, setQuote] = useState<Quote | null>(null);
   const [rawQuoteError, setQuoteError] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
-  const [quoteNonce, setQuoteNonce] = useState(0);
+  const [nonce, setNonce] = useState(0);
   const [phase, setPhase] = useState<Phase>({ name: "edit" });
   const [error, setError] = useState<string | null>(null);
   const [showFees, setShowFees] = useState(false);
-  const [dialog, setDialog] = useState<"none" | "recipient" | "signin">("none");
-  const [afterSignIn, setAfterSignIn] = useState<"recipient" | null>(null);
+  const [signIn, setSignIn] = useState(false);
+  const [togglingAuto, setTogglingAuto] = useState(false);
   const ids = useId();
 
-  const currency = currencies.find((c) => c.code === code) ?? currencies[0];
   const near = Number(amount) || 0;
-  const spendable = balance === null ? null : Math.max(0, balance - GAS_RESERVE);
-  const overBalance = spendable !== null && near > spendable;
-  // No amount → no quote (derived, so the effect never has to clear state).
-  const quote = near && rawQuote?.nearIn === near && rawQuote.currency === currency?.code ? rawQuote : null;
+  const overBalance = near > me.spendable;
+  const quote = near && rawQuote?.nearIn === near && rawQuote.currency === bank.currency ? rawQuote : null;
   const quoteError = near ? rawQuoteError : null;
 
-  // Live quote, debounced; refreshed every 30s while the user is looking at it.
   useEffect(() => {
-    if (!near || !currency) return;
+    if (!near) return;
     let cancelled = false;
     const run = () => {
       setQuoting(true);
       api
-        .quote(near, currency.code, accountId)
+        .quote(near, bank.currency)
         .then((q) => {
           if (!cancelled) {
             setQuote(q);
@@ -73,63 +70,47 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
       clearTimeout(t);
       clearInterval(every);
     };
-  }, [near, currency, accountId, signedIn, quoteNonce]);
+  }, [near, bank.currency, nonce]);
 
   const tracked = useSwap(phase.name === "tracking" ? phase.swap.id : null, phase.name === "tracking" ? phase.swap : null);
 
-  function pickRecipient() {
-    if (!signedIn) {
-      setAfterSignIn("recipient");
-      setDialog("signin");
-    } else setDialog("recipient");
-  }
-
-  async function onSwap() {
-    if (!accountId || !recipient || !currency || !near) return;
+  async function onCashOut() {
     setError(null);
-    setPhase({ name: "placing" });
+    setPhase({ name: "sending" });
     try {
-      const { swap, transaction } = await api.createSwap({
-        accountId,
-        near,
-        currency: currency.code,
-        bankId: recipient.bankId,
-        bankName: recipient.bankName,
-        accountNumber: recipient.accountNumber,
-        accountName: recipient.accountName,
-      });
-      if (!transaction) {
-        // Orders are simulated on the relay: skip the wallet, walk the same steps.
-        await api.recordDeposit(swap.id, "simulated");
-        setPhase({ name: "tracking", swap });
-        return;
-      }
-      setPhase({ name: "signing", swap });
-      const hash = await signAndSend(transaction);
-      const updated = await api.recordDeposit(swap.id, hash);
-      setPhase({ name: "tracking", swap: updated });
-      void refreshBalance();
+      const swap = await api.cashOut(near);
+      setPhase({ name: "tracking", swap });
+      void refresh();
     } catch (e) {
       const err = e as ApiError;
-      if (err.code === "SIGN_IN") setDialog("signin");
+      if (err.code === "SIGN_IN") setSignIn(true);
       setError(err.message);
       setPhase({ name: "edit" });
     }
   }
 
+  async function toggleAuto() {
+    setTogglingAuto(true);
+    setError(null);
+    try {
+      setMe(await api.setAuto(!me.autoCashout));
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setTogglingAuto(false);
+    }
+  }
+
   const cta = useMemo(() => {
-    if (!ready) return { label: "Loading wallets…", disabled: true };
-    if (!accountId) return { label: connecting ? "Connecting…" : "Connect wallet", disabled: connecting, action: () => void connect() };
+    if (!me.verified) return { label: "Verify email to cash out", disabled: false, action: () => setSignIn(true) };
     if (!near) return { label: "Enter an amount", disabled: true };
     if (overBalance) return { label: "Not enough NEAR", disabled: true };
-    if (!recipient) return { label: "Add a bank account", disabled: false, action: pickRecipient };
     if (quoting && !quote) return { label: "Getting the best rate…", disabled: true };
     if (!quote) return { label: "Rate unavailable", disabled: true };
-    if (phase.name === "placing") return { label: "Locking the rate…", disabled: true };
-    if (phase.name === "signing") return { label: "Confirm in your wallet…", disabled: true };
-    return { label: `Swap to ${currency?.code}`, disabled: false, action: () => void onSwap() };
+    if (phase.name === "sending") return { label: "Sending…", disabled: true };
+    return { label: `Cash out to ${bank.currency}`, disabled: false, action: () => void onCashOut() };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, accountId, connecting, near, overBalance, recipient, quoting, quote, phase.name, currency?.code, signedIn]);
+  }, [me.verified, near, overBalance, quoting, quote, phase.name, bank.currency]);
 
   if (phase.name === "tracking") {
     return (
@@ -147,12 +128,58 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
   }
 
   const locked = phase.name !== "edit";
+  const bankLine = `${bank.bankName} ${maskAccount(bank.accountNumber)}`;
 
   return (
     <div className="glass-card rounded-3xl p-4 sm:p-6">
-      {/* quick amounts + refresh */}
-      <div className="flex items-center justify-between gap-2">
-        <div className="flex gap-2">
+      <AddressCard
+        address={me.address}
+        note={
+          me.autoCashout
+            ? `Send NEAR here from any wallet or exchange. It's cashed out to ${bankLine} automatically (from ${me.autoMin} NEAR).`
+            : "Send NEAR here from any wallet or exchange. It stays in your balance until you cash out."
+        }
+      />
+
+      {/* auto cash-out switch */}
+      <div className="mt-3 flex items-center justify-between gap-3 rounded-2xl border border-border bg-panel px-4 py-3">
+        <span className="min-w-0">
+          <span id={`${ids}-auto`} className="block text-sm font-medium">
+            Auto cash-out
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            {me.autoPausedUntil
+              ? "Paused after a failed attempt; retrying soon"
+              : me.autoCashout
+                ? `Incoming NEAR → ${bankLine}`
+                : "Off: NEAR stays in your balance"}
+          </span>
+        </span>
+        <button
+          type="button"
+          role="switch"
+          aria-checked={me.autoCashout}
+          aria-labelledby={`${ids}-auto`}
+          disabled={togglingAuto}
+          onClick={() => void toggleAuto()}
+          className={cn(
+            "focus-ring relative inline-flex h-7 w-12 shrink-0 items-center rounded-full transition-colors duration-150 disabled:opacity-60",
+            me.autoCashout ? "bg-foreground" : "bg-foreground/20",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-block size-5 rounded-full bg-background shadow transition-transform duration-150 motion-reduce:transition-none",
+              me.autoCashout ? "translate-x-6" : "translate-x-1",
+            )}
+          />
+        </button>
+      </div>
+
+      {/* manual cash-out */}
+      <div className="mt-5 flex items-center justify-between gap-2">
+        <h2 className="text-sm font-medium">Cash out now</h2>
+        <div className="flex items-center gap-2">
           {[
             { label: "Half", f: 0.5 },
             { label: "Max", f: 1 },
@@ -160,30 +187,32 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
             <button
               key={label}
               type="button"
-              disabled={!spendable || locked}
-              onClick={() => setAmount(String(Math.floor((spendable ?? 0) * f * 1e4) / 1e4))}
+              disabled={!me.spendable || locked}
+              onClick={() => setAmount(String(Math.floor(me.spendable * f * 1e4) / 1e4))}
               className="focus-ring min-h-9 rounded-full border border-border bg-panel px-3.5 text-sm transition-colors duration-100 hover:bg-card disabled:opacity-50"
             >
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={() => setNonce((n) => n + 1)}
+            disabled={!near || locked}
+            aria-label="Refresh rate"
+            className="focus-ring flex size-9 items-center justify-center rounded-full border border-border bg-panel text-muted-foreground hover:text-foreground disabled:opacity-50"
+          >
+            <RefreshCw className={cn("size-4", quoting && "motion-safe:animate-spin")} aria-hidden="true" />
+          </button>
         </div>
-        <button
-          type="button"
-          onClick={() => setQuoteNonce((n) => n + 1)}
-          disabled={!near || locked}
-          aria-label="Refresh rate"
-          className="focus-ring flex size-9 items-center justify-center rounded-full border border-border bg-panel text-muted-foreground hover:text-foreground disabled:opacity-50"
-        >
-          <RefreshCw className={cn("size-4", quoting && "motion-safe:animate-spin")} aria-hidden="true" />
-        </button>
       </div>
 
-      {/* pay */}
-      <div className="mt-4 rounded-2xl border border-border bg-panel p-4">
-        <label htmlFor={`${ids}-pay`} className="text-sm text-muted-foreground">
-          You pay
-        </label>
+      <div className="mt-3 rounded-2xl border border-border bg-panel p-4">
+        <div className="flex items-center justify-between">
+          <label htmlFor={`${ids}-pay`} className="text-sm text-muted-foreground">
+            You sell
+          </label>
+          <span className="text-xs text-muted-foreground tabular-nums">Available {me.spendable.toFixed(4)} NEAR</span>
+        </div>
         <div className="mt-1 flex items-center gap-3">
           <input
             id={`${ids}-pay`}
@@ -197,54 +226,22 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
               if (v.split(".").length <= 2) setAmount(v);
             }}
             aria-invalid={overBalance || undefined}
-            className="min-w-0 flex-1 bg-transparent font-mono text-3xl font-semibold sm:text-4xl tabular-nums outline-none placeholder:text-muted-foreground/60 disabled:opacity-60"
+            className="min-w-0 flex-1 bg-transparent font-mono text-3xl font-semibold tabular-nums outline-none placeholder:text-muted-foreground/60 disabled:opacity-60 sm:text-4xl"
           />
-          <span className="inline-flex shrink-0 items-center gap-2 rounded-full border border-border bg-card py-1.5 pr-3.5 pl-1.5">
-            <span className="flex size-7 items-center justify-center rounded-full bg-foreground text-background">
-              <NearIcon className="size-4" />
-            </span>
-            <span className="text-sm font-medium">NEAR</span>
+          <span className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-sm font-medium">
+            <NearIcon className="size-4" /> NEAR
           </span>
-        </div>
-        <div className="mt-2 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-          <span>{quote ? `≈ $${(quote.usdcOut).toFixed(2)}` : " "}</span>
-          {accountId && (
-            <span className={cn("inline-flex items-center gap-1", overBalance && "text-warning")}>
-              <Wallet className="size-3.5" aria-hidden="true" />
-              <span className="font-mono tabular-nums">{balance === null ? "…" : balance.toFixed(4)}</span> NEAR
-            </span>
-          )}
         </div>
       </div>
 
-      <div className="relative z-10 -my-3 flex justify-center">
-        <span className="flex size-9 items-center justify-center rounded-xl border border-border bg-panel shadow-sm">
-          <ArrowDown className="size-4" aria-hidden="true" />
+      <div className="relative z-10 -my-3 flex justify-center" aria-hidden="true">
+        <span className="flex size-10 items-center justify-center rounded-full border border-border bg-panel">
+          <ArrowDown className="size-4" />
         </span>
       </div>
 
-      {/* receive */}
-      <div className="rounded-2xl border border-border bg-panel p-4">
-        <div className="flex items-center justify-between gap-2">
-          <span className="text-sm text-muted-foreground">You receive</span>
-          <button
-            type="button"
-            onClick={pickRecipient}
-            disabled={locked}
-            className="focus-ring inline-flex min-h-8 max-w-[60%] items-center gap-1.5 rounded-full bg-accent-soft px-3 text-xs font-medium text-accent hover:bg-accent-soft/70 disabled:opacity-60"
-          >
-            {recipient ? (
-              <span className="truncate">
-                {recipient.accountName.split(" ")[0]} · {recipient.bankName} {maskAccount(recipient.accountNumber)}
-              </span>
-            ) : (
-              <>
-                <Plus className="size-3.5" aria-hidden="true" />
-                Add bank account
-              </>
-            )}
-          </button>
-        </div>
+      <div className="rounded-2xl border border-border bg-card p-4">
+        <p className="text-sm text-muted-foreground">You receive</p>
         <div className="mt-1 flex items-center gap-3">
           <p
             className={cn(
@@ -254,50 +251,25 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
             )}
             aria-live="polite"
           >
-            {quote && currency ? formatFiat(quote.fiatOut, currency) : `${currency?.symbol ?? ""}0`}
+            {quote ? formatFiat(quote.fiatOut, currency) : `${currency?.symbol ?? ""}0`}
           </p>
-          <label className="sr-only" htmlFor={`${ids}-cur`}>
-            Currency
-          </label>
-          <span className="relative shrink-0">
-            <select
-              id={`${ids}-cur`}
-              value={code}
-              disabled={locked}
-              onChange={(e) => {
-                setCode(e.target.value);
-                setRecipient(null); // a recipient belongs to one country
-                const c = currencies.find((x) => x.code === e.target.value);
-                if (c) onCurrency?.(c);
-              }}
-              className="focus-ring min-h-10 appearance-none rounded-full border border-border bg-card py-1.5 pr-10 pl-3 text-sm font-medium"
-            >
-              {currencies.map((c) => (
-                <option key={c.code} value={c.code} disabled={c.comingSoon}>
-                  {c.flag} {c.code}
-                  {c.comingSoon ? " · soon" : ""}
-                </option>
-              ))}
-            </select>
-            <ChevronDown
-              className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
-              aria-hidden="true"
-            />
+          <span className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-panel px-3 text-sm font-medium">
+            {currency?.flag} {bank.currency}
           </span>
+        </div>
+        <div className="mt-2 flex items-center justify-between gap-2 text-xs">
+          <span className="inline-flex min-w-0 items-center gap-1.5 text-muted-foreground">
+            <Landmark className="size-3.5 shrink-0" aria-hidden="true" />
+            <span className="truncate">
+              {bank.accountName} · {bankLine}
+            </span>
+          </span>
+          <Link href="/app/account" className="focus-ring shrink-0 rounded font-medium underline-offset-2 hover:underline">
+            Change
+          </Link>
         </div>
       </div>
 
-      {currencies.some((c) => c.comingSoon) && (
-        <p className="mt-2 px-1 text-xs text-muted-foreground">
-          {currencies
-            .filter((c) => c.comingSoon)
-            .map((c) => `${c.flag} ${c.code}`)
-            .join(", ")}{" "}
-          fiat payouts coming soon.
-        </p>
-      )}
-
-      {/* rate + fees */}
       <div className="mt-3 min-h-6 px-1 text-sm">
         {quote && currency ? (
           <button
@@ -318,9 +290,7 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
             <Row label={`Paya fee (${quote.feePercent}%)`} value={`${quote.feeUsdc.toFixed(2)} USDC`} />
             <Row label="Rate" value={`1 USDC ≈ ${formatFiat(quote.rate, currency)}`} />
             <Row label="Arrives in" value={`~${Math.ceil(quote.etaSeconds / 60)} min`} />
-            {quote.priceSource === "public" && (
-              <p className="pt-1 text-muted-foreground">Indicative rate. Your final rate is locked when you swap.</p>
-            )}
+            {quote.priceSource === "public" && <p className="pt-1 text-muted-foreground">Indicative rate. Your final rate is locked when you cash out.</p>}
           </dl>
         )}
       </div>
@@ -340,23 +310,7 @@ export function SwapCard({ currencies, onCurrency }: { currencies: Currency[]; o
         {cta.label}
       </button>
 
-      {currency && (
-        <RecipientDialog
-          open={dialog === "recipient"}
-          currency={currency}
-          selectedId={recipient?.id ?? null}
-          onClose={() => setDialog("none")}
-          onSelect={setRecipient}
-        />
-      )}
-      <SignInDialog
-        open={dialog === "signin"}
-        onClose={() => setDialog((d) => (d === "signin" ? "none" : d))}
-        onSignedIn={() => {
-          if (afterSignIn === "recipient") setDialog("recipient");
-          setAfterSignIn(null);
-        }}
-      />
+      <SignInDialog open={signIn} onClose={() => setSignIn(false)} onSignedIn={() => void refresh()} />
     </div>
   );
 }

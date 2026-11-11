@@ -29,9 +29,10 @@ export function Footer() {
         </div>
         <ol className="mt-4 list-decimal space-y-3 pl-5 text-pretty">
           <li>
-            Paya is a technology platform, not a bank or a custodian. Paya never holds your funds: you
-            sign every transaction in your own wallet, swaps settle through NEAR Intents, and bank
-            payouts are made by licensed payout partners.
+            Paya is a technology platform, not a bank. Each account has its own NEAR address, managed
+            by Paya: NEAR sent there is cashed out to your verified bank account or sent on your
+            instruction. Swaps settle through NEAR Intents, and bank payouts are made by licensed
+            payout partners.
           </li>
           <li>
             Payouts are available in Nigeria (NGN), Ghana (GHS), Kenya (KES), Tanzania (TZS), South

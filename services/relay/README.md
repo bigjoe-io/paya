@@ -1,46 +1,57 @@
 # Paya relay
 
-Prices and tracks "NEAR → bank account" cash-outs. It never holds user funds: the user's wallet signs the only transaction that moves money.
+Runs Paya accounts: email sign-in, one NEAR address per user, a linked payout bank, and the cash-outs and purchases between them.
 
 ```
-user's NEAR wallet ──(wrap + ft_transfer, one signature)──▶ NEAR Intents deposit address
-      │  1Click EXACT_OUTPUT: delivers exactly the USDC PAJ asked for, on Solana
-      ▼
-PAJ deposit address (Solana USDC) ──▶ PAJ pays the bank account ──▶ COMPLETED
+any wallet / exchange ──NEAR──▶ user's Paya address (implicit account, key derived from MASTER_SEED)
+                                    │ deposit watcher sees it (auto cash-out on)
+                                    ▼ relay signs: wrap + send wNEAR
+                          NEAR Intents deposit address
+                                    │ 1Click EXACT_OUTPUT: exactly the USDC PAJ asked for, on Solana
+                                    ▼
+                    PAJ deposit address ──▶ PAJ pays the linked bank ──▶ COMPLETED
 ```
 
-1. **Quote** — dry 1Click quote (NEAR → USDC on Solana) + PAJ rate (public NGN rate before sign-in, the user's own `offramp-value` after).
-2. **Sign-in** — email OTP with PAJ (`/auth/start`, `/auth/verify`). The relay holds Paya's business key; the user's session token comes back to the browser and is sent as `Authorization: Bearer`.
-3. **Swap** — PAJ off-ramp order for A USDC (+ Paya's fee via `businessUSDCFee`) → PAJ deposit address + exact amount T → 1Click EXACT_OUTPUT for T USDC to that address → the wallet transaction (wrap NEAR, send wNEAR to the Intents deposit address). Unused NEAR from 1Click's slippage buffer is refunded to the user's wallet.
-4. **Track** — 1Click status until `SUCCESS`, then PAJ transaction `INIT → PAID → COMPLETED`.
+## Accounts and custody
+
+- **Sign-in** is email OTP through PAJ. Verifying creates the account on first use and returns a Paya session (HMAC-signed, 30 days). The PAJ session is stored encrypted (AES-256-GCM, `DATA_KEY`) because cash-outs run while the user is away.
+- **NEAR address**: user *i* gets the implicit account `hex(ed25519_pub(HMAC-SHA256(MASTER_SEED, "paya/near/v1/i")))`. Only the index is stored. **`MASTER_SEED` is the custody of every user's NEAR**: back it up offline, keep it only in the host's secret store, never change it.
+- **Payout bank**: one per account, changeable. The holder's name always comes from the bank lookup, never from the client.
+- **Auto cash-out** (default on): every address is polled; spendable NEAR ≥ `AUTO_MIN_NEAR` is cashed out to the linked bank. `RESERVE_NEAR` stays for fees. A failed or refunded attempt pauses auto for 30 minutes. If the PAJ session has expired, the NEAR waits until the user verifies their email again.
+- **Buying** turns auto cash-out off for that user, so bought NEAR isn't sold straight back. wNEAR that arrives is unwrapped automatically.
+- **Sending NEAR elsewhere** needs a fresh email code every time.
+- Every send waits for `FINAL`, one transfer per user at a time, with a cooldown so a lagging RPC read can never trigger a second send.
 
 ## Run
 
 ```bash
-cp .env.example .env   # set PAJ_API_KEY
+cp .env.example .env   # PAJ_API_KEY, and MASTER_SEED / DATA_KEY / SESSION_SECRET (openssl rand -hex 32 each)
 npm install
 npm run dev            # http://localhost:8787
+npm test               # key derivation, signing, encryption, sessions
 ```
 
-`LIVE_ORDERS=false` (default): sign-in, banks, account-name lookup and quotes are real; **no PAJ order is created and the wallet is never asked to send funds** — swaps are simulated. Set `LIVE_ORDERS=true` only when you mean to move real money (mainnet NEAR, real bank payouts).
+`LIVE_ORDERS=false`: sign-in, banks, account-name lookup and quotes are real; no PAJ order is created and no NEAR is sent. Set `LIVE_ORDERS=true` only when you mean to move real money.
 
 ## API
 
 | Method | Path | Auth | What |
 |---|---|---|---|
-| GET | `/health` | — | `demo` flag, fee |
-| GET | `/currencies` | — | NGN, GHS, KES, TZS, ZAR |
-| GET | `/prices` | — | NEAR/USD, USD/NGN |
-| GET | `/quote?near=&currency=&account=` | optional | price breakdown |
-| POST | `/auth/start` · `/auth/verify` | — | email OTP → session token |
-| GET | `/banks?currency=` | session | banks for a country |
-| POST | `/bank-accounts/resolve` | session | real account-holder name |
-| GET/POST | `/bank-accounts` | session | saved recipients (kept by PAJ) |
-| POST | `/kyc` | session | BVN/NIN, if PAJ asks for it |
-| POST | `/swaps` | session | place a cash-out → wallet transaction |
-| POST | `/swaps/:id/deposit` | — | record the wallet's tx hash |
-| GET | `/swaps/:id`, `/swaps?account=` | — | status / history |
+| GET | `/health`, `/currencies`, `/prices` | — | reference data |
+| GET | `/quote?near=&currency=` | optional | cash-out price breakdown |
+| POST | `/auth/start` · `/auth/verify` | — | email code → Paya session (creates the account) |
+| GET | `/me` | session | email, NEAR address, balances, linked bank, auto cash-out |
+| PUT | `/me/bank` | session | link or change the payout bank |
+| PUT | `/me/auto` | session | auto cash-out on/off |
+| POST | `/cashout` | session | cash out NEAR from the balance now |
+| POST | `/me/withdraw` | session + email code | send NEAR to another address |
+| GET | `/me/activity` | session | cash-outs and purchases |
+| GET | `/swaps/:id` | session (owner) | cash-out status |
+| GET | `/banks?currency=` · POST `/bank-accounts/resolve` · GET/POST `/bank-accounts` · POST `/kyc` | session | bank data via PAJ |
+| GET | `/buy/currencies` · `/buy/quote` | optional | purchase pricing |
+| POST | `/buys` · `/buys/:id/sent` · GET `/buys/:id` | session (owner) | buy NEAR by bank transfer |
 | POST | `/webhooks/paj` | — | hint only; the order is re-read from PAJ |
+| * | `/admin/*` | `ADMIN_TOKEN` | server-to-server admin API (no CORS) |
 
 ## Fees, per cash-out
 

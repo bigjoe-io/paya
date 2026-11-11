@@ -2,7 +2,7 @@ import type { ReactNode } from "react";
 import type { SwapStatus } from "@/lib/relay";
 
 export const STATUS_LABEL: Record<SwapStatus, string> = {
-  awaiting_deposit: "Awaiting wallet",
+  awaiting_deposit: "Sending",
   swapping: "Swapping",
   paying: "Paying out",
   paid: "Paid",
