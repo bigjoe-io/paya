@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useId, useRef, useState, type FormEvent } from "react";
-import { BadgeCheck, Check, Plus, X } from "lucide-react";
+import { BadgeCheck, Check, Loader2, Plus, X } from "lucide-react";
 import { BankPicker } from "@/components/app/bank-picker";
 import { api, type Bank, type Currency } from "@/lib/api";
 import { maskAccount, useRecipients, type Recipient } from "@/lib/recipients";
@@ -157,15 +157,17 @@ function AccountForm({
   >({ state: "idle" });
 
   const bank = banks.find((b) => b.id === bankId);
+  const lookup = useRef(0); // only the latest lookup may update the form
 
-  async function resolve(bank = bankId) {
-    if (!bank || account.length < 10) return;
+  async function resolve(bank = bankId, acct = account) {
+    if (!bank || acct.length < 10) return;
+    const n = ++lookup.current;
     setCheck({ state: "checking" });
     try {
-      const r = await api.resolveAccount(bank, account);
-      setCheck({ state: "ok", name: r.accountName });
+      const r = await api.resolveAccount(bank, acct);
+      if (n === lookup.current) setCheck({ state: "ok", name: r.accountName });
     } catch (e) {
-      setCheck({ state: "error", message: (e as Error).message });
+      if (n === lookup.current) setCheck({ state: "error", message: (e as Error).message });
     }
   }
 
@@ -201,6 +203,7 @@ function AccountForm({
           labelId={`${id}-bank-label`}
           onChange={(v) => {
             setBankId(v);
+            lookup.current++;
             setCheck({ state: "idle" });
             void resolve(v); // account typed first → look the name up now
           }}
@@ -211,22 +214,35 @@ function AccountForm({
         <label htmlFor={`${id}-acct`} className="block text-sm font-medium">
           Account number
         </label>
-        <input
-          id={`${id}-acct`}
-          required
-          inputMode="numeric"
-          autoComplete="off"
-          value={account}
-          onChange={(e) => {
-            setAccount(e.target.value.replace(/\D/g, "").slice(0, 20));
-            setCheck({ state: "idle" });
-          }}
-          onBlur={() => void resolve()}
-          placeholder="10-digit account number"
-          className="focus-ring mt-1.5 min-h-11 w-full rounded-xl border border-border bg-panel px-3 font-mono text-base tabular-nums placeholder:font-sans placeholder:text-muted-foreground"
-        />
+        <div className="relative mt-1.5">
+          <input
+            id={`${id}-acct`}
+            required
+            inputMode="numeric"
+            autoComplete="off"
+            value={account}
+            onChange={(e) => {
+              const next = e.target.value.replace(/\D/g, "").slice(0, 20);
+              setAccount(next);
+              lookup.current++;
+              setCheck({ state: "idle" });
+              // Look the name up the moment the 10th digit is typed.
+              if (next.length === 10 && next !== account) void resolve(bankId, next);
+            }}
+            onBlur={() => {
+              if (check.state === "idle") void resolve();
+            }}
+            aria-busy={check.state === "checking"}
+            placeholder="10-digit account number"
+            className="focus-ring min-h-11 w-full rounded-xl border border-border bg-panel pr-10 pl-3 font-mono text-base tabular-nums placeholder:font-sans placeholder:text-muted-foreground"
+          />
+          <span className="pointer-events-none absolute top-1/2 right-3 -translate-y-1/2" aria-hidden="true">
+            {check.state === "checking" && <Loader2 className="size-4 text-muted-foreground motion-safe:animate-spin" />}
+            {check.state === "ok" && <BadgeCheck className="size-4 text-success" />}
+          </span>
+        </div>
         <div className="mt-2 min-h-5 text-sm" aria-live="polite">
-          {check.state === "checking" && <span className="text-muted-foreground">Checking with the bank…</span>}
+          {check.state === "checking" && <span className="text-muted-foreground">Checking the name with the bank…</span>}
           {check.state === "ok" && (
             <span className="inline-flex items-center gap-1.5 text-success">
               <BadgeCheck className="size-4" aria-hidden="true" />
@@ -245,9 +261,11 @@ function AccountForm({
         <button
           type="submit"
           disabled={check.state !== "ok" || busy}
-          className="focus-ring inline-flex min-h-11 flex-1 items-center justify-center rounded-xl bg-foreground px-5 text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:bg-foreground/20 disabled:text-muted-foreground"
+          aria-busy={check.state === "checking" || busy}
+          className="focus-ring inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-foreground px-5 text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90 disabled:bg-foreground/20 disabled:text-muted-foreground"
         >
-          {busy ? "Saving…" : "Save and use"}
+          {(check.state === "checking" || busy) && <Loader2 className="size-4 motion-safe:animate-spin" aria-hidden="true" />}
+          {busy ? "Saving…" : check.state === "checking" ? "Checking name…" : "Save and use"}
         </button>
         {onCancel && (
           <button type="button" onClick={onCancel} className="focus-ring min-h-11 rounded-xl px-4 text-sm text-muted-foreground hover:text-foreground">
