@@ -1,7 +1,8 @@
 import Link from "next/link";
+import { redirect } from "next/navigation";
 import { Search } from "lucide-react";
 import { requireAdmin } from "@/lib/session";
-import { relay, RelayError, type AdminSwap } from "@/lib/relay";
+import { relay, RelayError, type AdminBuy, type AdminSwap } from "@/lib/relay";
 import { Card, money, RelayDown, SimBadge, STATUS_LABEL, StatusBadge, when, yoctoToNear } from "@/components/ui";
 
 const STATUSES = Object.keys(STATUS_LABEL) as (keyof typeof STATUS_LABEL)[];
@@ -13,9 +14,13 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/">)
   const status = typeof sp.status === "string" ? sp.status : "";
   const mode = typeof sp.mode === "string" ? sp.mode : "";
 
-  let stats, list: AdminSwap[];
+  // A support ID goes straight to its order.
+  if (/^swp_[0-9a-f]+$/.test(q.trim())) redirect(`/swaps/${q.trim()}`);
+  if (/^buy_[0-9a-f]+$/.test(q.trim())) redirect(`/buys/${q.trim()}`);
+
+  let stats, list: AdminSwap[], buyMatches: AdminBuy[];
   try {
-    [stats, list] = await Promise.all([relay.stats(), relay.swaps({ q, status, mode })]);
+    [stats, list, buyMatches] = await Promise.all([relay.stats(), relay.swaps({ q, status, mode }), q ? relay.buys(q) : Promise.resolve([])]);
   } catch (e) {
     return <RelayDown message={e instanceof RelayError ? e.message : "Unexpected error"} />;
   }
@@ -61,7 +66,7 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/">)
           <input
             name="q"
             defaultValue={q}
-            placeholder="Tx hash, Solana signature, swap id, PAJ order, wallet, account number, name…"
+            placeholder="Support ID (swp_… / buy_…), NEAR or Solana tx, email, address, account number…"
             className="min-h-10 w-full rounded-xl border border-neutral-300 bg-white pr-3 pl-9 text-sm outline-none focus-visible:ring-2 focus-visible:ring-blue-600"
           />
         </label>
@@ -144,6 +149,25 @@ export default async function TransactionsPage({ searchParams }: PageProps<"/">)
         </table>
       </Card>
       <p className="text-xs text-neutral-500">Showing up to 200 newest. Narrow with search for older ones.</p>
+      {q && buyMatches.length > 0 && (
+        <Card className="p-0">
+          <h2 className="border-b border-neutral-200 px-4 py-3 text-sm font-medium">Purchases matching “{q}”</h2>
+          <ul className="divide-y divide-neutral-100">
+            {buyMatches.map((b) => (
+              <li key={b.id} className="flex items-center justify-between gap-3 px-4 py-3 text-sm">
+                <Link href={`/buys/${b.id}`} className="font-mono text-blue-700 hover:underline">
+                  {b.id}
+                </Link>
+                <span className="tabular-nums">
+                  {b.fiat_amount.toLocaleString("en-US")} {b.currency}
+                </span>
+                <span>{b.status}</span>
+                <span className="text-neutral-500">{when(b.created_at)}</span>
+              </li>
+            ))}
+          </ul>
+        </Card>
+      )}
     </div>
   );
 }

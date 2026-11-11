@@ -152,9 +152,11 @@ export function startWatcher() {
         try {
           await (s.demo ? advanceDemo(s) : advance(s));
         } catch (e) {
-          warn("watcher", `${s.id}: ${(e as Error).message}`);
-          if ((e as Error).message !== s.error) swaps.event(s.id, "error", { message: (e as Error).message });
-          swaps.update(s.id, { error: (e as Error).message });
+          const msg = (e as Error).message;
+          warn("watcher", `${s.id}: ${msg}`);
+          // Internal hiccups go to the timeline for support, not to the user.
+          const last = s.events?.at(-1);
+          if (!(last?.type === "watch_error" && last.detail?.message === msg)) swaps.event(s.id, "watch_error", { message: msg });
         }
       }
     } finally {
@@ -171,10 +173,11 @@ async function advance(s: Swap) {
     return;
   }
   if (s.status === "swapping" && s.deposit_address) {
-    const st = await oneclick.status(s.deposit_address);
-    if (st !== s.swap_status) {
-      swaps.update(s.id, { swap_status: st });
-      swaps.event(s.id, "swap_status", { status: st });
+    const full = await oneclick.statusFull(s.deposit_address);
+    const st = full.status;
+    if (st !== s.swap_status || (full.outTx && full.outTx !== s.out_tx)) {
+      swaps.update(s.id, { swap_status: st, out_tx: full.outTx, intents_ref: full.correlationId });
+      swaps.event(s.id, "swap_status", { status: st, ...(full.outTx ? { tx: full.outTx } : {}) });
     }
     if (st === "SUCCESS") set(s, "paying");
     else if (st === "REFUNDED") set(s, "refunded", { error: "The swap couldn't complete; your NEAR was returned to your Paya balance" });

@@ -81,7 +81,7 @@ export default async function SwapPage({ params }: PageProps<"/swaps/[id]">) {
           Everything a user, PAJ or NEAR Intents support might quote. Each links to its public explorer.
         </p>
         <dl className="mt-3 divide-y divide-neutral-100 text-sm">
-          <Row k="NEAR wallet tx (user signed)" v={s.deposit_tx ? <Id value={s.deposit_tx} href={s.demo ? undefined : explorer.nearTx(s.deposit_tx)} /> : "—"} />
+          <Row k="NEAR tx (Paya address → Intents)" v={s.deposit_tx ? <Id value={s.deposit_tx} href={s.demo ? undefined : explorer.nearTx(s.deposit_tx)} /> : "—"} />
           <Row k="Intents deposit address (NEAR)" v={s.deposit_address ? <Id value={s.deposit_address} href={explorer.nearAccount(s.deposit_address)} /> : "—"} />
           <Row k="PAJ order id" v={s.paj_order_id ? <Id value={s.paj_order_id} /> : "—"} />
           <Row k="PAJ deposit address (Solana)" v={s.receive_address ? <Id value={s.receive_address} href={explorer.solanaAccount(s.receive_address)} /> : "—"} />
@@ -89,6 +89,11 @@ export default async function SwapPage({ params }: PageProps<"/swaps/[id]">) {
             k="Payout reference / Solana signature"
             v={s.payment_reference ? <Id value={s.payment_reference} href={s.demo ? undefined : explorer.solanaTx(s.payment_reference)} /> : "—"}
           />
+          <Row
+            k={s.status === "refunded" ? "Refund tx (NEAR back to user)" : "USDC to PAJ (Solana tx)"}
+            v={s.out_tx ? <Id value={s.out_tx} href={s.status === "refunded" ? explorer.nearTx(s.out_tx) : explorer.solanaTx(s.out_tx)} /> : "—"}
+          />
+          <Row k="NEAR Intents support ref" v={s.intents_ref ? <Id value={s.intents_ref} /> : "—"} />
           <Row k="Intents status (last seen)" v={s.swap_status ?? "—"} />
           <Row k="PAJ status (last seen)" v={s.payout_status ?? "—"} />
         </dl>

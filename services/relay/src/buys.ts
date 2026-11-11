@@ -224,9 +224,22 @@ export function markSent(id: string) {
   const b = buys.byId(id);
   if (!b) throw new Error("Unknown order");
   buys.event(id, "user_marked_sent");
+  buys.update(id, { user_marked_sent: 1 });
   if (b.demo && b.status === "awaiting_payment") set(b, "converting", { payment_status: "PAID" });
   return buys.byId(id)!;
 }
+
+/** Cancel an unpaid order. We keep watching it until its deadline, so a transfer made anyway is still delivered. */
+export function cancelBuy(id: string, by: "user" | "auto") {
+  const b = buys.byId(id);
+  if (!b) throw new Error("Unknown order");
+  if (b.status !== "awaiting_payment") throw new Error("Only unpaid orders can be cancelled");
+  set(b, "cancelled", { error: by === "auto" ? "No payment was confirmed, so this order was closed." : null });
+  return buys.byId(id)!;
+}
+
+/** Unpaid orders nobody said they paid are closed after this long. */
+const UNPAID_CLOSE_MS = 2 * 60 * 60_000;
 
 /* ---------- watcher ---------- */
 
@@ -242,10 +255,9 @@ export function startBuyWatcher() {
         } catch (e) {
           const msg = (e as Error).message;
           warn("buy-watcher", `${b.id}: ${msg}`);
-          if (msg !== b.error) {
-            buys.update(b.id, { error: msg });
-            buys.event(b.id, "error", { message: msg });
-          }
+          // Internal hiccups (RPC, PAJ session) go to the timeline for support, not to the user.
+          const last = b.events?.at(-1);
+          if (!(last?.type === "watch_error" && last.detail?.message === msg)) buys.event(b.id, "watch_error", { message: msg });
         }
       }
     } finally {
@@ -255,26 +267,35 @@ export function startBuyWatcher() {
 }
 
 async function advance(b: Buy) {
-  if (Date.now() > Date.parse(b.deadline) && b.status === "awaiting_payment") {
-    set(b, "expired", { error: "No payment arrived before the order expired", paj_token: null });
+  if (Date.now() > Date.parse(b.deadline) && (b.status === "awaiting_payment" || b.status === "cancelled")) {
+    if (b.status === "awaiting_payment") set(b, "expired", { error: "No payment arrived before the order expired", paj_token: null });
+    else buys.update(b.id, { paj_token: null }); // window over: stop watching
     return;
+  }
+  if (b.status === "awaiting_payment" && !b.user_marked_sent && Date.now() - Date.parse(b.created_at) > UNPAID_CLOSE_MS) {
+    cancelBuy(b.id, "auto");
+    b.status = "cancelled";
   }
   // 1. has PAJ received the money and sent the USDC?
   const token = currentPajToken(b.account_id) ?? b.paj_token;
-  if (b.paj_order_id && token && b.status === "awaiting_payment") {
+  if (b.paj_order_id && token && (b.status === "awaiting_payment" || b.status === "cancelled")) {
     const t = await paj.transaction(token, b.paj_order_id);
     if (t.status !== b.payment_status) {
       buys.update(b.id, { payment_status: t.status });
       buys.event(b.id, "payment_status", { status: t.status });
     }
-    if (t.status === "PAID" || t.status === "COMPLETED") set(b, "converting");
+    const pajTx = (t as { signature?: string }).signature;
+    if (pajTx && pajTx !== b.paj_tx) buys.update(b.id, { paj_tx: pajTx });
+    // Paid, even if the order had been cancelled: deliver it.
+    if (t.status === "PAID" || t.status === "COMPLETED") set(b, "converting", { error: null });
   }
   // 2. has NEAR Intents swapped it into NEAR?
   if (b.status === "converting" && b.deposit_address) {
-    const st = await oneclick.status(b.deposit_address);
-    if (st !== b.swap_status) {
-      buys.update(b.id, { swap_status: st });
-      buys.event(b.id, "swap_status", { status: st });
+    const full = await oneclick.statusFull(b.deposit_address);
+    const st = full.status;
+    if (st !== b.swap_status || (full.outTx && full.outTx !== b.out_tx)) {
+      buys.update(b.id, { swap_status: st, out_tx: full.outTx, intents_ref: full.correlationId });
+      buys.event(b.id, "swap_status", { status: st, ...(full.outTx ? { tx: full.outTx } : {}) });
     }
     if (st === "SUCCESS") set(b, "delivered", { paj_token: null, error: null });
     else if (st === "REFUNDED") set(b, "refunded", { error: "The swap couldn't complete; the USDC is in your NEAR Intents balance", paj_token: null });

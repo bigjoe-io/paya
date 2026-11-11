@@ -1,17 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Check, ExternalLink, Loader2 } from "lucide-react";
+import { Check, CheckCircle2, Copy, Loader2, RotateCcw } from "lucide-react";
 import { api, formatFiat, type Currency, type Swap, type SwapStatus } from "@/lib/api";
 import { cn } from "@/lib/utils";
-
-const STEPS = [
-  { label: "Order placed", detail: "Rate locked, payout reserved" },
-  { label: "NEAR sent", detail: "From your Paya address to NEAR Intents" },
-  { label: "Swapped to USDC", detail: "Delivered on Solana" },
-  { label: "Paying out", detail: "Local transfer to your bank" },
-  { label: "Paid", detail: "In the account" },
-];
 
 /** Index of the step that is in progress (all before it are done). */
 function current(status: SwapStatus) {
@@ -60,104 +52,94 @@ export function SwapProgress({
   currency: Currency | undefined;
   onDone: () => void;
 }) {
-  const at = current(swap.status);
-  const failed = at === -1;
   const done = swap.status === "paid";
+  const refunded = swap.status === "refunded";
+  const stopped = current(swap.status) === -1;
+  const running = !done && !stopped;
   const money = currency ? formatFiat(swap.fiatAmount, currency) : `${swap.fiatAmount} ${swap.currency}`;
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(t);
+  }, []);
+  const minutes = (now - Date.parse(swap.createdAt)) / 60_000;
+  const slow = running && minutes > 10;
 
   return (
-    <div>
-      <div className="text-center">
-        <p className="text-sm text-muted-foreground">
-          {done ? "Paid to" : failed ? "Cash-out stopped" : "Paying"} {swap.recipient.name}
-        </p>
-        <p className={cn("mt-1 font-mono text-4xl font-semibold tabular-nums", done && "text-success")}>{money}</p>
-        <p className="mt-1 font-mono text-sm text-muted-foreground tabular-nums">
-          {swap.nearIn.toFixed(4)} NEAR · {swap.recipient.bankName} {swap.recipient.account}
-        </p>
-        {swap.demo && (
-          <span className="mt-2 inline-block rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">
-            Demo — no funds moved
-          </span>
+    <div className="text-center">
+      <p className="text-sm text-muted-foreground">{done ? "Paid to" : "Cash-out to"} {swap.recipient.name}</p>
+      <p className={cn("mt-1 font-mono text-4xl font-semibold tabular-nums", done && "text-success")}>{money}</p>
+      <p className="mt-1 text-sm text-muted-foreground">
+        {swap.recipient.bankName} {swap.recipient.account}
+      </p>
+      {swap.demo && (
+        <span className="mt-2 inline-block rounded-full bg-warning-soft px-2.5 py-1 text-xs font-medium text-warning">Demo — no funds moved</span>
+      )}
+
+      <div
+        role="status"
+        aria-live="polite"
+        className={cn(
+          "mt-6 flex flex-col items-center gap-3 rounded-2xl p-6",
+          done ? "bg-success-soft" : stopped ? "bg-warning-soft" : "bg-card",
         )}
+      >
+        {done ? (
+          <CheckCircle2 className="size-10 text-success" aria-hidden="true" />
+        ) : stopped ? (
+          <RotateCcw className="size-9 text-warning" aria-hidden="true" />
+        ) : (
+          <Loader2 className="size-10 text-foreground motion-safe:animate-spin" aria-hidden="true" />
+        )}
+        <p className="text-base font-medium">
+          {done ? "Paid" : refunded ? "Returned to your balance" : stopped ? "Cash-out stopped" : "Processing payout"}
+        </p>
+        <p className="max-w-xs text-sm text-muted-foreground text-pretty">
+          {done
+            ? "The money is in your bank account."
+            : refunded
+              ? `This cash-out couldn't complete, so your ${swap.nearIn.toFixed(4)} NEAR came back to your Paya balance. You can try again.`
+              : stopped
+                ? (swap.error ?? "Nothing left your balance. You can try again.")
+                : slow
+                  ? "Taking longer than usual. If it can't go through, your NEAR comes back to your balance automatically."
+                  : "Usually 2–5 minutes. You can leave this page; we'll keep going."}
+        </p>
       </div>
 
-      {failed ? (
-        <div role="alert" className="mt-6 rounded-2xl bg-warning-soft p-4 text-sm text-foreground">
-          <p className="font-medium capitalize">{swap.status}</p>
-          <p className="mt-1 text-foreground/80">{swap.error ?? "Something went wrong."}</p>
-        </div>
-      ) : (
-        <ol className="mt-6 space-y-1" aria-label="Progress">
-          {STEPS.map((s, i) => {
-            const isDone = i < at || done;
-            const isNow = i === at && !done;
-            return (
-              <li key={s.label} className="flex items-start gap-3 py-2" aria-current={isNow ? "step" : undefined}>
-                <span
-                  className={cn(
-                    "mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-full border",
-                    isDone && "border-success bg-success text-white",
-                    isNow && "border-accent text-accent",
-                    !isDone && !isNow && "border-border text-muted-foreground",
-                  )}
-                >
-                  {isDone ? (
-                    <Check className="size-3.5" aria-hidden="true" />
-                  ) : isNow ? (
-                    <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden="true" />
-                  ) : (
-                    <span className="text-[11px]">{i + 1}</span>
-                  )}
-                </span>
-                <span>
-                  <span className={cn("block text-sm font-medium", !isDone && !isNow && "text-muted-foreground")}>
-                    {s.label}
-                  </span>
-                  <span className="block text-xs text-muted-foreground">{s.detail}</span>
-                </span>
-              </li>
-            );
-          })}
-        </ol>
-      )}
+      <SupportId id={swap.supportId ?? swap.id} />
 
-      {(swap.paymentReference || (swap.depositTx && !swap.demo)) && (
-        <dl className="mt-4 space-y-1 border-t border-border pt-4 text-xs">
-          {swap.paymentReference && (
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">Bank reference</dt>
-              <dd className="font-mono tabular-nums">{swap.paymentReference}</dd>
-            </div>
-          )}
-          {swap.depositTx && !swap.demo && (
-            <div className="flex justify-between gap-3">
-              <dt className="text-muted-foreground">NEAR transaction</dt>
-              <dd>
-                <a
-                  href={`https://nearblocks.io/txns/${swap.depositTx}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="focus-ring inline-flex items-center gap-1 rounded font-mono hover:underline"
-                >
-                  {swap.depositTx.slice(0, 8)}…
-                  <ExternalLink className="size-3" aria-hidden="true" />
-                </a>
-              </dd>
-            </div>
-          )}
-        </dl>
-      )}
-
-      {(done || failed) && (
-        <button
-          type="button"
-          onClick={onDone}
-          className="focus-ring mt-6 min-h-12 w-full rounded-2xl bg-foreground text-sm font-medium text-background transition-colors duration-100 hover:bg-foreground/90"
-        >
-          {done ? "New cash-out" : "Try again"}
-        </button>
-      )}
+      <button
+        type="button"
+        onClick={onDone}
+        className={cn(
+          "focus-ring mt-5 min-h-12 w-full rounded-2xl text-sm font-medium transition-colors duration-100",
+          running ? "border border-border text-foreground hover:bg-card" : "bg-foreground text-background hover:bg-foreground/90",
+        )}
+      >
+        {done ? "New cash-out" : running ? "Close" : "Try again"}
+      </button>
     </div>
+  );
+}
+
+/** The one thing a user needs for support: the order's ID, copyable. Details live in Activity. */
+export function SupportId({ id }: { id: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() =>
+        void navigator.clipboard?.writeText(id).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        })
+      }
+      className="focus-ring mx-auto mt-4 inline-flex min-h-9 items-center gap-1.5 rounded-lg px-2 font-mono text-xs text-muted-foreground hover:text-foreground"
+      aria-label={`Copy support ID ${id}`}
+    >
+      Support ID {id}
+      {copied ? <Check className="size-3.5 text-success" aria-hidden="true" /> : <Copy className="size-3.5" aria-hidden="true" />}
+    </button>
   );
 }

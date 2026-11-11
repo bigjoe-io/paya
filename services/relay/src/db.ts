@@ -39,6 +39,10 @@ export type Swap = {
   swap_status: string | null; // raw 1Click status
   payout_status: string | null; // raw PAJ status
   payment_reference: string | null;
+  /** Solana tx that delivered the USDC to PAJ (or NEAR tx of the refund). */
+  out_tx?: string | null;
+  /** NEAR Intents support reference. */
+  intents_ref?: string | null;
   demo: number;
   error: string | null;
   created_at: string;
@@ -129,6 +133,7 @@ export const swaps = {
 
 export type BuyStatus =
   | "awaiting_payment" // waiting for the user's bank transfer to PAJ
+  | "cancelled" // user cancelled, or nobody paid within the window
   | "converting" // PAJ received the fiat; USDC on its way / being swapped to NEAR
   | "delivered" // NEAR (or wNEAR) is in the user's wallet
   | "refunded"
@@ -155,6 +160,12 @@ export type Buy = {
   status: BuyStatus;
   payment_status: string | null; // raw PAJ status
   swap_status: string | null; // raw 1Click status
+  /** PAJ's Solana tx sending the USDC. */
+  paj_tx?: string | null;
+  /** NEAR tx that delivered the NEAR (or the refund). */
+  out_tx?: string | null;
+  intents_ref?: string | null;
+  user_marked_sent?: number;
   error: string | null;
   demo: number;
   created_at: string;
@@ -167,8 +178,11 @@ const buyStore = createStore<Buy>(config.BUYS_PATH, "buy");
 
 export const buys = {
   ...buyStore,
+  /** Running orders, plus cancelled ones still inside their window (a late transfer must still be delivered). */
   active: () =>
-    buyStore.where((b) => BUY_ACTIVE.includes(b.status)).sort((a, b) => a.created_at.localeCompare(b.created_at)),
+    buyStore
+      .where((b) => BUY_ACTIVE.includes(b.status) || (b.status === "cancelled" && Date.parse(b.deadline) > Date.now()))
+      .sort((a, b) => a.created_at.localeCompare(b.created_at)),
 };
 
 /* ---------- users: email ⇄ NEAR address ⇄ payout bank ---------- */

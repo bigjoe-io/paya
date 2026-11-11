@@ -113,11 +113,21 @@ export const oneclick = {
   },
 
   async status(depositAddress: string): Promise<SwapStatus> {
+    return (await this.statusFull(depositAddress)).status;
+  },
+
+  /** Status plus the transaction that delivered the output (or the refund) and 1Click's support reference. */
+  async statusFull(depositAddress: string): Promise<{ status: SwapStatus; outTx: string | null; correlationId: string | null }> {
     const r = await fetch(`${BASE}/status?depositAddress=${encodeURIComponent(depositAddress)}`, {
       headers: headers(),
       signal: AbortSignal.timeout(10000),
     });
     if (!r.ok) throw new Error(`Swap status ${r.status}`);
-    return ((await r.json()) as { status: SwapStatus }).status;
+    const j = (await r.json()) as {
+      status: SwapStatus;
+      correlationId?: string;
+      swapDetails?: { destinationChainTxHashes?: { hash: string }[] };
+    };
+    return { status: j.status, outTx: j.swapDetails?.destinationChainTxHashes?.[0]?.hash ?? null, correlationId: j.correlationId ?? null };
   },
 };

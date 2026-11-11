@@ -8,7 +8,7 @@ import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { minCashoutNear, preview } from "./quote.js";
 import { applyPayout } from "./swaps.js";
-import { BUY_CURRENCIES, createBuy, markSent, minBuy, previewBuy } from "./buys.js";
+import { BUY_CURRENCIES, cancelBuy, createBuy, markSent, minBuy, previewBuy } from "./buys.js";
 import { buys, type Buy } from "./db.js";
 import { admin } from "./admin.js";
 import { audit, last4 } from "./audit.js";
@@ -299,6 +299,14 @@ const ownBuy = (c: Context) => {
   return b && b.account_id === u.address ? b : null;
 };
 
+app.post("/buys/:id/cancel", (c) => {
+  const b = ownBuy(c);
+  if (!b) return c.json({ error: "Not found" }, 404);
+  const done = cancelBuy(b.id, "user");
+  audit("buy_cancelled", me(c, true).email, { buyId: b.id });
+  return c.json(publicBuy(done));
+});
+
 app.post("/buys/:id/sent", (c) => {
   const b = ownBuy(c);
   return b ? c.json(publicBuy(markSent(b.id))) : c.json({ error: "Not found" }, 404);
@@ -351,6 +359,11 @@ function publicBuy(b: Buy) {
         : null,
     deadline: b.deadline,
     error: b.error,
+    // Share the order id with support; the hashes show where the money went.
+    supportId: b.id,
+    solanaTx: b.paj_tx ?? null, // PAJ → NEAR Intents (USDC)
+    nearTx: b.out_tx ?? null, // NEAR Intents → your Paya address (NEAR), or the refund
+    intentsRef: b.intents_ref ?? null,
     createdAt: b.created_at,
     updatedAt: b.updated_at,
   };
@@ -372,6 +385,11 @@ function publicSwap(s: Swap) {
     recipient: { bankName: s.bank_name, account: mask(s.account_number), name: s.account_name },
     depositTx: s.deposit_tx,
     paymentReference: s.payment_reference,
+    supportId: s.id,
+    nearTx: s.deposit_tx && s.deposit_tx !== "simulated" ? s.deposit_tx : null, // your Paya address → NEAR Intents
+    solanaTx: s.status !== "refunded" ? (s.out_tx ?? null) : null, // NEAR Intents → PAJ (USDC)
+    refundTx: s.status === "refunded" ? (s.out_tx ?? null) : null, // NEAR returned to your address
+    intentsRef: s.intents_ref ?? null,
     error: s.error,
     createdAt: s.created_at,
     updatedAt: s.updated_at,

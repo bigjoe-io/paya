@@ -38,6 +38,8 @@ function haystack(s: Swap) {
     s.account_id,
     s.deposit_tx,
     s.payment_reference,
+    s.out_tx,
+    s.intents_ref,
     s.deposit_address,
     s.receive_address,
     s.paj_order_id,
@@ -145,7 +147,7 @@ admin.get("/buys", (c) => {
   if (status) list = list.filter((b) => b.status === status);
   if (q)
     list = list.filter((b) =>
-      [b.id, b.account_id, b.paj_order_id, b.deposit_address, b.pay_account_number, b.currency]
+      [b.id, b.account_id, b.paj_order_id, b.deposit_address, b.pay_account_number, b.currency, b.paj_tx, b.out_tx, b.intents_ref, users.byAddress(b.account_id)?.email]
         .filter(Boolean)
         .join(" ")
         .toLowerCase()

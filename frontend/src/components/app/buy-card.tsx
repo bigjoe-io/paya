@@ -7,6 +7,7 @@ import { shortAddress, useAccount } from "@/components/app/account-provider";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { api, ApiError, formatFiat, type Buy, type BuyQuote, type Currency, type Me } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { SupportId } from "@/components/app/swap-progress";
 import { usePersistentState } from "@/lib/persist";
 
 /** Show an order again after a reload: anything still running, or finished in the last 30 minutes and not dismissed. */
@@ -328,17 +329,13 @@ export function BuyCard({ me, currencies }: { me: Me; currencies: Currency[] }) 
 
 /* ---------- the order: pay → converting → delivered ---------- */
 
-const STEPS = [
-  { key: "awaiting_payment", label: "Send the transfer" },
-  { key: "converting", label: "Payment received, buying NEAR" },
-  { key: "delivered", label: "NEAR in your Paya balance" },
-] as const;
-
 function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Currency; onDone: () => void }) {
   const [buy, setBuy] = useState(initial);
   const [marking, setMarking] = useState(false);
   const [now, setNow] = useState(() => Date.now());
-  const final = ["delivered", "refunded", "expired", "failed"].includes(buy.status);
+  const final = ["delivered", "refunded", "expired", "failed", "cancelled"].includes(buy.status);
+  const [marked, setMarked] = usePersistentState(`buy:marked:${initial.id}`, false);
+  const [cancelling, setCancelling] = useState(false);
 
   useEffect(() => {
     if (final) return;
@@ -349,7 +346,6 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
     return () => clearInterval(t);
   }, [buy.id, final]);
 
-  const stepIndex = STEPS.findIndex((s) => s.key === buy.status);
   const left = Math.max(0, Date.parse(buy.deadline) - now);
   const hours = Math.floor(left / 3_600_000);
   const mins = Math.floor((left % 3_600_000) / 60_000);
@@ -396,41 +392,25 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
         </p>
       )}
 
-      {/* progress */}
-      {buy.status !== "expired" && buy.status !== "failed" && buy.status !== "refunded" && (
-        <ol className="mt-5 space-y-3">
-          {STEPS.map((s, i) => {
-            const done = i < stepIndex || buy.status === "delivered";
-            const current = i === stepIndex && buy.status !== "delivered";
-            return (
-              <li key={s.key} className="flex items-center gap-3 text-sm">
-                <span
-                  className={cn(
-                    "flex size-6 shrink-0 items-center justify-center rounded-full border",
-                    done ? "border-foreground bg-foreground text-background" : current ? "border-foreground" : "border-border text-muted-foreground",
-                  )}
-                >
-                  {done ? (
-                    <Check className="size-3.5" aria-hidden="true" />
-                  ) : current ? (
-                    <Loader2 className="size-3.5 motion-safe:animate-spin" aria-hidden="true" />
-                  ) : (
-                    <span className="text-[10px]">{i + 1}</span>
-                  )}
-                </span>
-                <span className={cn(!done && !current && "text-muted-foreground")}>{s.label}</span>
-              </li>
-            );
-          })}
-        </ol>
+      {/* one status line, not a step list */}
+      {(buy.status === "converting" || (buy.status === "awaiting_payment" && marked)) && (
+        <div role="status" aria-live="polite" className="mt-5 flex items-center gap-3 rounded-2xl bg-card p-4 text-sm">
+          <Loader2 className="size-5 shrink-0 motion-safe:animate-spin" aria-hidden="true" />
+          <span>
+            <span className="block font-medium">{buy.status === "converting" ? "Buying your NEAR" : "Waiting for your transfer to arrive"}</span>
+            <span className="block text-muted-foreground">
+              {buy.status === "converting" ? "Payment received. Usually a few minutes." : "Usually a few minutes after you send it."}
+            </span>
+          </span>
+        </div>
       )}
 
-      {(buy.status === "expired" || buy.status === "failed" || buy.status === "refunded") && (
+      {(buy.status === "expired" || buy.status === "cancelled" || buy.status === "failed" || buy.status === "refunded") && (
         <p role="alert" className="mt-5 flex gap-2 rounded-xl bg-warning-soft p-3 text-sm">
           <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <span>
-            {buy.status === "expired"
-              ? "This order expired. If you already sent money, contact support with the order ID below."
+            {buy.status === "expired" || buy.status === "cancelled"
+              ? "This order is closed. If you already sent money, it will still be delivered; contact support with the ID below if it isn't."
               : buy.error ?? "Something went wrong with this order."}
           </span>
         </p>
@@ -446,7 +426,7 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
       )}
 
       <div className="mt-5 flex flex-wrap gap-2">
-        {buy.status === "awaiting_payment" && (
+        {buy.status === "awaiting_payment" && !marked && (
           <button
             type="button"
             disabled={marking}
@@ -454,6 +434,7 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
               setMarking(true);
               try {
                 setBuy(await api.markBuySent(buy.id));
+                setMarked(true);
               } finally {
                 setMarking(false);
               }
@@ -463,20 +444,42 @@ function BuyOrder({ initial, currency, onDone }: { initial: Buy; currency: Curre
             {marking ? "Saving…" : "I've sent the money"}
           </button>
         )}
-        {(final || buy.status === "awaiting_payment") && (
+        {buy.status === "awaiting_payment" && !marked && (
+          <button
+            type="button"
+            disabled={cancelling}
+            onClick={async () => {
+              setCancelling(true);
+              try {
+                await api.cancelBuy(buy.id);
+              } catch {
+                /* already closed or paid: just leave */
+              } finally {
+                setCancelling(false);
+                onDone();
+              }
+            }}
+            className="focus-ring min-h-12 rounded-2xl px-5 text-sm font-medium text-muted-foreground hover:text-foreground disabled:opacity-60"
+          >
+            {cancelling ? "Cancelling…" : "Cancel order"}
+          </button>
+        )}
+        {(final || buy.status === "converting" || marked) && (
           <button
             type="button"
             onClick={onDone}
             className={cn(
-              "focus-ring min-h-12 rounded-2xl px-5 text-sm font-medium",
-              final ? "flex-1 bg-foreground text-background hover:bg-foreground/90" : "text-muted-foreground hover:text-foreground",
+              "focus-ring min-h-12 flex-1 rounded-2xl px-5 text-sm font-medium",
+              final ? "bg-foreground text-background hover:bg-foreground/90" : "border border-border hover:bg-card",
             )}
           >
-            {final ? "Done" : "Cancel"}
+            {final ? "Done" : "Close"}
           </button>
         )}
       </div>
-      <p className="mt-3 text-center font-mono text-xs text-muted-foreground">Order {buy.id}</p>
+      <div className="text-center">
+        <SupportId id={buy.supportId ?? buy.id} />
+      </div>
     </div>
   );
 }

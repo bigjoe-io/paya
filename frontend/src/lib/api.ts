@@ -38,6 +38,15 @@ export type Swap = {
   recipient: { bankName: string; account: string; name: string };
   depositTx: string | null;
   paymentReference: string | null;
+  /** Give this to support. */
+  supportId?: string;
+  /** Paya address → NEAR Intents. */
+  nearTx?: string | null;
+  /** NEAR Intents → PAJ (USDC on Solana). */
+  solanaTx?: string | null;
+  /** NEAR returned to the Paya address. */
+  refundTx?: string | null;
+  intentsRef?: string | null;
   error: string | null;
   createdAt: string;
   updatedAt: string;
@@ -59,7 +68,7 @@ export type BuyQuote = {
   etaSeconds: number;
 };
 
-export type BuyStatus = "awaiting_payment" | "converting" | "delivered" | "refunded" | "expired" | "failed";
+export type BuyStatus = "awaiting_payment" | "cancelled" | "converting" | "delivered" | "refunded" | "expired" | "failed";
 
 export type Buy = {
   id: string;
@@ -76,6 +85,12 @@ export type Buy = {
   payTo: { bank: string; accountNumber: string; accountName: string } | null;
   deadline: string;
   error: string | null;
+  supportId?: string;
+  /** PAJ → NEAR Intents (USDC on Solana). */
+  solanaTx?: string | null;
+  /** NEAR Intents → Paya address (NEAR). */
+  nearTx?: string | null;
+  intentsRef?: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -174,6 +189,7 @@ export const api = {
   buyQuote: (fiat: number, currency: string) => request<BuyQuote>(`/buy/quote?fiat=${fiat}&currency=${currency}`),
   createBuy: (b: { fiat: number; currency: string }) =>
     request<Buy>("/buys", { method: "POST", body: JSON.stringify(b) }),
+  cancelBuy: (id: string) => request<Buy>(`/buys/${id}/cancel`, { method: "POST" }),
   markBuySent: (id: string) => request<Buy>(`/buys/${id}/sent`, { method: "POST" }),
   buy: (id: string) => request<Buy>(`/buys/${id}`),
 };
