@@ -47,8 +47,8 @@ export const metadata: Metadata = {
   },
   twitter: { card: "summary_large_image" },
   robots: { index: true, follow: true },
-  // Set GOOGLE_SITE_VERIFICATION on Vercel to the code Search Console gives you (HTML tag method).
-  verification: process.env.GOOGLE_SITE_VERIFICATION ? { google: process.env.GOOGLE_SITE_VERIFICATION } : undefined,
+  // Google Search Console ownership (HTML tag method). Public by design; override with GOOGLE_SITE_VERIFICATION.
+  verification: { google: process.env.GOOGLE_SITE_VERIFICATION ?? "lqEQ5y3u-fTIvwPo47Rz2vCUuMzPfpmWV7ri5Z2YW_I" },
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
