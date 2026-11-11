@@ -42,12 +42,34 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
   const ids = useId();
 
   const near = Number(amount) || 0;
-  const overBalance = near > me.spendable;
+  // Checked before anything is quoted or sent: the button only enables for an amount that will go through.
+  const [minNear, setMinNear] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    const load = () =>
+      api
+        .cashoutLimits()
+        .then((l) => {
+          if (!cancelled) setMinNear(l.minNear);
+        })
+        .catch(() => undefined);
+    void load();
+    const t = setInterval(load, 120_000);
+    return () => {
+      cancelled = true;
+      clearInterval(t);
+    };
+  }, []);
+  const maxNear = Math.floor(me.spendable * 1e4) / 1e4;
+  const overBalance = near > maxNear;
+  const underMin = minNear !== null && near > 0 && near < minNear;
+  const cantCashOut = minNear !== null && maxNear < minNear;
+  const inRange = near > 0 && !overBalance && !underMin;
   const quote = near && rawQuote?.nearIn === near && rawQuote.currency === bank.currency ? rawQuote : null;
   const quoteError = near ? rawQuoteError : null;
 
   useEffect(() => {
-    if (!near) return;
+    if (!inRange) return;
     let cancelled = false;
     const run = () => {
       setQuoting(true);
@@ -76,7 +98,7 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
       clearTimeout(t);
       clearInterval(every);
     };
-  }, [near, bank.currency, nonce]);
+  }, [near, inRange, bank.currency, nonce]);
 
   // After a reload (or an automatic cash-out), show the latest cash-out's progress.
   useEffect(() => {
@@ -131,14 +153,17 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
 
   const cta = useMemo(() => {
     if (!me.verified) return { label: "Verify email to cash out", disabled: false, action: () => setSignIn(true) };
+    if (cantCashOut) return { label: `You need at least ${minNear} NEAR to cash out`, disabled: true };
     if (!near) return { label: "Enter an amount", disabled: true };
-    if (overBalance) return { label: "Not enough NEAR", disabled: true };
+    if (overBalance) return { label: `Max is ${maxNear} NEAR`, disabled: true };
+    if (underMin) return { label: `Minimum is ${minNear} NEAR`, disabled: true };
+    if (minNear === null) return { label: "Checking limits…", disabled: true };
     if (quoting && !quote) return { label: "Getting the best rate…", disabled: true };
     if (!quote) return { label: "Rate unavailable", disabled: true };
     if (phase.name === "sending") return { label: "Sending…", disabled: true };
     return { label: `Cash out to ${bank.currency}`, disabled: false, action: () => void onCashOut() };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [me.verified, near, overBalance, quoting, quote, phase.name, bank.currency]);
+  }, [me.verified, near, overBalance, underMin, cantCashOut, minNear, maxNear, quoting, quote, phase.name, bank.currency]);
 
   if (phase.name === "tracking") {
     return (
@@ -240,7 +265,7 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
           <label htmlFor={`${ids}-pay`} className="text-sm text-muted-foreground">
             You sell
           </label>
-          <span className="text-xs text-muted-foreground tabular-nums">Available {me.spendable.toFixed(4)} NEAR</span>
+          <span className="text-xs text-muted-foreground tabular-nums">Max {maxNear} NEAR</span>
         </div>
         <div className="mt-1 flex items-center gap-3">
           <input
@@ -261,6 +286,13 @@ export function SwapCard({ me, currencies }: { me: Me; currencies: Currency[] })
             <NearIcon className="size-4" /> NEAR
           </span>
         </div>
+        <p className={cn("mt-2 text-xs tabular-nums", overBalance || underMin ? "text-warning" : "text-muted-foreground")}>
+          {minNear === null
+            ? "Checking limits…"
+            : cantCashOut
+              ? `You need at least ${minNear} NEAR to cash out. ${me.reserve} NEAR always stays for network fees.`
+              : `Min ${minNear} · Max ${maxNear} NEAR · ${me.reserve} NEAR stays for network fees`}
+        </p>
       </div>
 
       <div className="relative z-10 -my-3 flex justify-center" aria-hidden="true">

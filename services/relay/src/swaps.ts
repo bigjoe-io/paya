@@ -5,7 +5,7 @@ import { pajTokenOf } from "./accounts.js";
 import { log, warn } from "./log.js";
 import { oneclick } from "./oneclick.js";
 import { paj, type PajStatus } from "./paj.js";
-import { DRY_RECIPIENT, sizePayout } from "./quote.js";
+import { DRY_RECIPIENT, MIN_CASHOUT_USDC, minCashoutNear, sizePayout } from "./quote.js";
 
 /**
  * A cash-out, end to end:
@@ -37,7 +37,7 @@ export async function createSwap(p: NewSwap, pajToken: string) {
   // 1. what this NEAR is worth in USDC, and the payout sized inside it
   const dry = await oneclick.previewExactIn(yocto, p.accountId, DRY_RECIPIENT);
   const { usdc, fee } = sizePayout(Number(dry.amountOut) / 1e6);
-  if (usdc < 1) throw new Error("Minimum cash-out is about 1 USDC worth of NEAR");
+  if (usdc < MIN_CASHOUT_USDC) throw new Error(`Minimum cash-out is ${await minCashoutNear()} NEAR`);
 
   const base = {
     id,

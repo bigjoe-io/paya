@@ -163,6 +163,7 @@ export const api = {
   setBank: (b: { currency: string; bankId: string; accountNumber: string }) =>
     request<Me>("/me/bank", { method: "PUT", body: JSON.stringify(b) }),
   setAuto: (enabled: boolean) => request<Me>("/me/auto", { method: "PUT", body: JSON.stringify({ enabled }) }),
+  cashoutLimits: () => request<{ minNear: number }>("/cashout/limits"),
   cashOut: (near: number) => request<Swap>("/cashout", { method: "POST", body: JSON.stringify({ near }) }),
   withdraw: (b: { to: string; near: number; otp: string; deviceId: string }) =>
     request<{ txHash: string }>("/me/withdraw", { method: "POST", body: JSON.stringify(b) }),

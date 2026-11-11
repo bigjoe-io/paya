@@ -6,7 +6,7 @@ import { swaps, users, type Swap, type User } from "./db.js";
 import { log } from "./log.js";
 import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
-import { preview } from "./quote.js";
+import { minCashoutNear, preview } from "./quote.js";
 import { applyPayout } from "./swaps.js";
 import { BUY_CURRENCIES, createBuy, markSent, minBuy, previewBuy } from "./buys.js";
 import { buys, type Buy } from "./db.js";
@@ -183,6 +183,9 @@ app.put("/me/auto", async (c) => {
   if (enabled && !u.bank_id) throw new Error("Link a bank account first");
   return c.json(await accountView(setAuto(u, enabled)));
 });
+
+/** Smallest amount that cashes out right now (the largest is `spendable` on /me). */
+app.get("/cashout/limits", async (c) => c.json({ minNear: await minCashoutNear() }));
 
 /** Cash out from the Paya balance to the linked bank. */
 app.post("/cashout", async (c) => {

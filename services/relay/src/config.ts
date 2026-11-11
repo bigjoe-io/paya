@@ -71,7 +71,7 @@ const schema = z.object({
   /** Auto cash-out starts at this much spendable NEAR. */
   AUTO_MIN_NEAR: z.coerce.number().min(0.1).default(0.4),
   /** NEAR left in each address for fees. */
-  RESERVE_NEAR: z.coerce.number().min(0.01).default(0.05),
+  RESERVE_NEAR: z.coerce.number().min(0.01).default(0.07),
 
   PORT: z.coerce.number().int().default(8787),
   DB_PATH: z.string().default("./paya-data.json"),

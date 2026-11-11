@@ -3,7 +3,8 @@ import { audit, last4 } from "./audit.js";
 import { config } from "./config.js";
 import { buys, swaps, users, type User } from "./db.js";
 import { log, warn } from "./log.js";
-import { accountExists, addressFor, balances, sendNear, sendToIntents, toNear, toYocto, unwrap } from "./near.js";
+import { accountExists, addressFor, balances, SEND_COST, sendNear, sendToIntents, toNear, toYocto, unwrap, UNWRAP_COST } from "./near.js";
+import { minCashoutNear } from "./quote.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { decrypt, encrypt } from "./secrets.js";
 import { createSwap, failSwap, recordDeposit } from "./swaps.js";
@@ -16,7 +17,12 @@ import { createSwap, failSwap, recordDeposit } from "./swaps.js";
  * held in the Paya balance when the user has turned that off.
  */
 
-const RESERVE = () => toYocto(config.RESERVE_NEAR);
+/** NEAR kept back for the send itself: never less than what NEAR will check for, plus a margin. */
+const RESERVE = () => {
+  const floor = SEND_COST + toYocto(0.005);
+  const set = toYocto(config.RESERVE_NEAR);
+  return set > floor ? set : floor;
+};
 const MIN_AUTO = () => toYocto(config.AUTO_MIN_NEAR);
 const PAUSE_AFTER_FAILURE_MS = 30 * 60_000;
 
@@ -118,8 +124,8 @@ export async function accountView(u: User) {
     balance: toNear(b.available),
     spendable: toNear(spendable),
     wnear: toNear(b.wnear),
-    reserve: config.RESERVE_NEAR,
-    autoMin: config.AUTO_MIN_NEAR,
+    reserve: toNear(RESERVE()),
+    autoMin: Math.max(config.AUTO_MIN_NEAR, await minCashoutNear().catch(() => config.AUTO_MIN_NEAR)),
     bank: u.bank_id
       ? { currency: u.currency!, bankId: u.bank_id, bankName: u.bank_name!, accountNumber: u.account_number!, accountName: u.account_name! }
       : null,
@@ -162,7 +168,9 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
     const spendable = b.available > RESERVE() ? b.available - RESERVE() : 0n;
     const want = toYocto(near);
     if (want <= 0n) throw new Error("Enter an amount");
-    if (want > spendable) throw new Error(`You can cash out up to ${toNear(spendable)} NEAR`);
+    if (want > spendable) throw new Error(`You can cash out up to ${toNear(spendable)} NEAR (the rest pays the network fee)`);
+    const min = await minCashoutNear();
+    if (near < min) throw new Error(`Minimum cash-out is ${min} NEAR`);
 
     const { swap, deposit } = await createSwap(
       {
@@ -183,8 +191,8 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
       return recordDeposit(swap.id, "simulated");
     }
     const amount = BigInt(deposit.amountYocto);
-    if (amount > spendable) {
-      failSwap(swap.id, "The rate moved; not enough NEAR for this amount. Nothing was sent.");
+    if (amount + SEND_COST > b.available) {
+      failSwap(swap.id, "The rate moved before we could send. Nothing left your balance.");
       throw new Error("The rate moved while we were locking it. Nothing was sent — try a slightly smaller amount.");
     }
     let hash: string;
@@ -194,7 +202,8 @@ export function cashOut(u: User, near: number, trigger: "manual" | "auto") {
     } catch (e) {
       cool(u);
       const msg = (e as Error).message;
-      failSwap(swap.id, `Couldn't send from your Paya address: ${msg}`);
+      swaps.event(swap.id, "send_error", { message: msg }); // the technical reason, for support
+      failSwap(swap.id, "We couldn't send this cash-out. Nothing left your balance, so you can try again.");
       throw new Error("Couldn't send the NEAR. Nothing was taken from your balance. Please try again.");
     }
     audit("cashout_sent", u.email, { swapId: swap.id, trigger, near, tx: hash, bank: u.bank_name, account: last4(u.account_number) });
@@ -264,7 +273,7 @@ async function checkUser(u: User) {
   const b = await balances(u.address);
 
   // NEAR bought through Intents can arrive as wNEAR: turn it into NEAR.
-  if (b.wnear >= toYocto(0.001) && b.exists && b.available >= toYocto(0.002)) {
+  if (b.wnear >= toYocto(0.001) && b.exists && b.available >= UNWRAP_COST + toYocto(0.001)) {
     const hash = await unwrap(u.key_index, b.wnear).finally(() => cool(u));
     users.event(u.id, "unwrapped", { near: toNear(b.wnear), tx: hash });
     log("account", `${u.id} unwrapped ${toNear(b.wnear)} wNEAR`);
@@ -278,7 +287,8 @@ async function checkUser(u: User) {
   if (hasOpenCashOut(u) || busy.has(u.id) || (cooldownUntil.get(u.id) ?? 0) > Date.now() || recentlyFailed(u)) return;
 
   const spendable = b.available > RESERVE() ? b.available - RESERVE() : 0n;
-  if (spendable < MIN_AUTO()) return;
+  const autoMin = MIN_AUTO() > toYocto(await minCashoutNear()) ? MIN_AUTO() : toYocto(await minCashoutNear());
+  if (spendable < autoMin) return;
 
   if (!pajTokenOf(u)) {
     if (!waitingSignInNoted.has(u.id)) {
