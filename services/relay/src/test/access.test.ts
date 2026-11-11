@@ -29,7 +29,8 @@ test("a code unlocks, a used-up or revoked code doesn't", async () => {
   const r = await post("/access/redeem", { code: code.toLowerCase() }); // case-insensitive
   assert.equal(r.status, 200);
   const { token } = (await r.json()) as { token: string };
-  assert.equal((await app.request("/access/check", { headers: { "X-Paya-Access": token } }).then((x) => x.json())).ok, true);
+  const check = await app.request("/access/check", { headers: { "X-Paya-Access": token } });
+  assert.equal(((await check.json()) as { ok: boolean }).ok, true);
   assert.notEqual((await app.request("/me", { headers: { "X-Paya-Access": token } })).status, 403); // passes the gate (then needs sign-in)
   assert.equal((await post("/access/redeem", { code })).status, 400); // max uses reached
   accessCodes.update(id, { revoked: 1 });
