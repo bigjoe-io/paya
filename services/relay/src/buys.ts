@@ -3,7 +3,8 @@ import { config } from "./config.js";
 import { buys, type Buy, type BuyStatus } from "./db.js";
 import { log, warn } from "./log.js";
 import { oneclick } from "./oneclick.js";
-import { paj } from "./paj.js";
+import { COUNTRY, paj } from "./paj.js";
+import { indicativeBuyRate } from "./fx.js";
 
 /**
  * Buy: local currency → NEAR in the user's own wallet.
@@ -17,8 +18,10 @@ import { paj } from "./paj.js";
  * USDC is refunded into the user's NEAR Intents balance (they control it with
  * their NEAR wallet).
  */
-export const BUY_CURRENCIES = ["NGN"]; // PAJ publishes an on-ramp rate for NGN; others later
-export const MIN_BUY: Record<string, number> = { NGN: 2000 };
+/** Every country PAJ pays in also takes deposits (USD stays "coming soon"). */
+export const BUY_CURRENCIES = Object.keys(COUNTRY);
+/** Roughly US$1.50 each: below that the swap's fixed costs eat the purchase. */
+export const MIN_BUY: Record<string, number> = { NGN: 2000, GHS: 20, KES: 200, TZS: 4000, ZAR: 25 };
 const DEADLINE_MS = 24 * 60 * 60 * 1000; // bank transfers can be slow
 /** Quote the swap a little below the USDC we expect, so any normal delivery clears its minimum. */
 const QUOTE_HEADROOM = 0.97;
@@ -44,7 +47,7 @@ const yoctoToNear = (y: string) => Number(BigInt(y) / 10n ** 18n) / 1e6;
 async function usdcFor(fiat: number, currency: string, token?: string) {
   if (token) return { usdc: (await paj.onrampValue(token, fiat, currency)).amount, source: "account" as const };
   if (currency === "NGN") return { usdc: fiat / (await paj.publicNgnBuyRate()), source: "public" as const };
-  throw new Error(`Sign in to see ${currency} rates`);
+  return { usdc: fiat / (await indicativeBuyRate(currency)), source: "public" as const };
 }
 
 export async function previewBuy(fiat: number, currency: string, account: string, token?: string): Promise<BuyPreview> {

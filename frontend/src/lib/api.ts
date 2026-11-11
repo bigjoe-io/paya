@@ -161,7 +161,7 @@ export const api = {
   swap: (id: string) => request<Swap>(`/swaps/${id}`),
   swaps: (account: string) => request<Swap[]>(`/swaps?account=${account}`),
 
-  buyCurrencies: () => request<string[]>("/buy/currencies"),
+  buyCurrencies: () => request<{ code: string; min: number }[]>("/buy/currencies"),
   buyQuote: (fiat: number, currency: string, account?: string | null) =>
     request<BuyQuote>(`/buy/quote?fiat=${fiat}&currency=${currency}${account ? `&account=${account}` : ""}`),
   createBuy: (b: { accountId: string; fiat: number; currency: string }) =>

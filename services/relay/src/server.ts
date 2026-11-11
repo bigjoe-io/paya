@@ -8,7 +8,7 @@ import { ASSET_WNEAR } from "./oneclick.js";
 import { COUNTRY, paj, PajError } from "./paj.js";
 import { preview } from "./quote.js";
 import { applyPayout, createSwap, recordDeposit } from "./swaps.js";
-import { BUY_CURRENCIES, createBuy, markSent, previewBuy } from "./buys.js";
+import { BUY_CURRENCIES, MIN_BUY, createBuy, markSent, previewBuy } from "./buys.js";
 import { buys, type Buy } from "./db.js";
 import { admin } from "./admin.js";
 import { audit, last4 } from "./audit.js";
@@ -209,7 +209,7 @@ app.get("/swaps", (c) => c.json(swaps.forAccount(accountId.parse(c.req.query("ac
 
 /* ---------- buy: fiat → NEAR ---------- */
 
-app.get("/buy/currencies", (c) => c.json(BUY_CURRENCIES));
+app.get("/buy/currencies", (c) => c.json(BUY_CURRENCIES.map((code) => ({ code, min: MIN_BUY[code] ?? 0 }))));
 
 app.get("/buy/quote", async (c) => {
   const q = z

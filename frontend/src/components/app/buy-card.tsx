@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useId, useMemo, useState, type FormEvent } from "react";
-import { ArrowDown, Check, CheckCircle2, Clock, Copy, Info, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
+import { ArrowDown, Check, ChevronDown, CheckCircle2, Clock, Copy, Info, Loader2, RefreshCw, TriangleAlert } from "lucide-react";
 import { NearIcon } from "@/components/landing/icons";
 import { useWallet } from "@/components/app/wallet-provider";
 import { useSession } from "@/components/app/session-provider";
@@ -10,16 +10,25 @@ import { api, ApiError, formatFiat, yoctoToNear, type Buy, type BuyQuote, type C
 import { unwrapTx, wnearBalance } from "@/lib/wnear";
 import { cn } from "@/lib/utils";
 
-const QUICK = [5000, 20000, 50000];
+/** Quick amounts per currency (roughly $3, $15, $35). */
+const QUICK: Record<string, number[]> = {
+  NGN: [5000, 20000, 50000],
+  GHS: [50, 200, 500],
+  KES: [500, 2000, 5000],
+  TZS: [10000, 40000, 100000],
+  ZAR: [50, 250, 600],
+};
+/** PAJ's KYC country codes. */
+const ISO: Record<string, string> = { NGN: "NG", GHS: "GH", KES: "KE", TZS: "TZ", ZAR: "ZA" };
 const needsKyc = (msg: string) => /kyc|bvn|\bnin\b|verify your identity|identity verification/i.test(msg);
 
 /** Buy NEAR with a bank transfer. Paya never holds the money or the NEAR. */
 export function BuyCard({ currencies }: { currencies: Currency[] }) {
   const { accountId, ready, connecting, connect } = useWallet();
   const { signedIn } = useSession();
-  const [buyable, setBuyable] = useState<string[]>(["NGN"]);
+  const [buyable, setBuyable] = useState<{ code: string; min: number }[] | null>(null);
   const [amount, setAmount] = useState("");
-  const code: string = "NGN"; // the only currency PAJ sells NEAR for today
+  const [code, setCode] = useState("NGN");
   const [rawQuote, setQuote] = useState<BuyQuote | null>(null);
   const [rawQuoteError, setQuoteError] = useState<string | null>(null);
   const [quoting, setQuoting] = useState(false);
@@ -36,6 +45,8 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
   }, []);
 
   const currency = currencies.find((c) => c.code === code) ?? currencies[0];
+  const canBuy = (c: string) => !buyable || buyable.some((b) => b.code === c);
+  const min = buyable?.find((b) => b.code === code)?.min ?? 0;
   const fiat = Number(amount) || 0;
   const quote = fiat && rawQuote?.fiat === fiat && rawQuote.currency === code ? rawQuote : null;
   const quoteError = fiat ? rawQuoteError : null;
@@ -115,13 +126,13 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
     );
   }
 
-  const soon = currencies.filter((c) => !buyable.includes(c.code));
+  const soon = currencies.filter((c) => !canBuy(c.code));
 
   return (
     <div className="glass-card rounded-3xl p-4 sm:p-6">
       <div className="flex items-center justify-between gap-2">
         <div className="flex flex-wrap gap-2">
-          {QUICK.map((n) => (
+          {(QUICK[code] ?? []).map((n) => (
             <button
               key={n}
               type="button"
@@ -161,11 +172,37 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
             onChange={(e) => setAmount(e.target.value.replace(/\D/g, "").slice(0, 9))}
             className="min-w-0 flex-1 bg-transparent font-mono text-3xl font-semibold tabular-nums outline-none placeholder:text-muted-foreground/60 sm:text-4xl"
           />
-          <span className="inline-flex min-h-10 shrink-0 items-center gap-1.5 rounded-full border border-border bg-card px-3 text-sm font-medium">
-            {currency?.flag} {currency?.code}
+          <label className="sr-only" htmlFor={`${ids}-cur`}>
+            Currency
+          </label>
+          <span className="relative shrink-0">
+            <select
+              id={`${ids}-cur`}
+              value={code}
+              onChange={(e) => {
+                setCode(e.target.value);
+                setAmount("");
+                setError(null);
+              }}
+              className="focus-ring min-h-10 appearance-none rounded-full border border-border bg-card py-1.5 pr-10 pl-3 text-sm font-medium"
+            >
+              {currencies.map((c) => (
+                <option key={c.code} value={c.code} disabled={!canBuy(c.code)}>
+                  {c.flag} {c.code}
+                  {!canBuy(c.code) ? " · soon" : ""}
+                </option>
+              ))}
+            </select>
+            <ChevronDown
+              className="pointer-events-none absolute top-1/2 right-3 size-4 -translate-y-1/2 text-muted-foreground"
+              aria-hidden="true"
+            />
           </span>
         </div>
-        <p className="mt-2 text-xs text-muted-foreground">By bank transfer from your own account</p>
+        <p className="mt-2 text-xs text-muted-foreground">
+          By bank transfer from your own {currency?.country} account
+          {min ? ` · min ${formatFiat(min, currency ?? code)}` : ""}
+        </p>
       </div>
 
       <div className="relative z-10 -my-3 flex justify-center" aria-hidden="true">
@@ -252,7 +289,7 @@ export function BuyCard({ currencies }: { currencies: Currency[] }) {
       <SignInDialog open={dialog === "signin"} onClose={() => setDialog((d) => (d === "signin" ? "none" : d))} />
       <KycDialog
         open={dialog === "kyc"}
-        country={code === "NGN" ? "NG" : code.slice(0, 2)}
+        country={ISO[code] ?? "NG"}
         onClose={() => setDialog("none")}
         onDone={() => setError(null)}
       />

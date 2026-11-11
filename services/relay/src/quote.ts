@@ -1,6 +1,7 @@
 import { config } from "./config.js";
 import { oneclick } from "./oneclick.js";
 import { paj } from "./paj.js";
+import { indicativeSellRate } from "./fx.js";
 
 /**
  * Pricing for "X NEAR → local currency".
@@ -35,7 +36,7 @@ export type Preview = {
   fiatOut: number;
   fiatPerNear: number;
   currency: string;
-  /** "account": priced for this user by PAJ; "public": NGN public rate before sign-in. */
+  /** "account": priced for this user by PAJ; "public": indicative rate before sign-in. */
   priceSource: "account" | "public";
   etaSeconds: number;
 };
@@ -57,7 +58,8 @@ export async function preview(nearIn: number, currency: string, refundTo: string
     fiatOut = Math.floor(usdc * (await paj.publicNgnRate()));
     priceSource = "public";
   } else {
-    throw new Error(`Sign in to see ${currency} rates`);
+    fiatOut = Math.floor(usdc * (await indicativeSellRate(currency)));
+    priceSource = "public";
   }
 
   return {
