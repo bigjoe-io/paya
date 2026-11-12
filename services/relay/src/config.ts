@@ -2,6 +2,12 @@ import { existsSync, readFileSync } from "node:fs";
 import { z } from "zod";
 
 /**
+ * Where the JSON stores live. On Render a persistent disk is mounted at /data; use it
+ * automatically so records survive deploys. DATA_DIR overrides; locally it's the cwd.
+ */
+export const DATA_DIR = process.env.DATA_DIR ?? (existsSync("/data") ? "/data" : ".");
+
+/**
  * Load `.env` from the working directory. Variables already set in the
  * environment win, so a deployment can override any of them.
  */
@@ -79,11 +85,11 @@ const schema = z.object({
   RESERVE_NEAR: z.coerce.number().min(0.01).default(0.02),
 
   PORT: z.coerce.number().int().default(8787),
-  DB_PATH: z.string().default("./paya-data.json"),
-  BUYS_PATH: z.string().default("./paya-buys.json"),
-  USERS_PATH: z.string().default("./paya-users.json"),
-  ACCESS_PATH: z.string().default("./paya-access.json"),
-  WAITLIST_PATH: z.string().default("./paya-waitlist.json"),
+  DB_PATH: z.string().default(`${DATA_DIR}/paya-data.json`),
+  BUYS_PATH: z.string().default(`${DATA_DIR}/paya-buys.json`),
+  USERS_PATH: z.string().default(`${DATA_DIR}/paya-users.json`),
+  ACCESS_PATH: z.string().default(`${DATA_DIR}/paya-access.json`),
+  WAITLIST_PATH: z.string().default(`${DATA_DIR}/paya-waitlist.json`),
   /**
    * Private testing: when set, the app's API only answers people who unlocked
    * it with a tester access code. Same value as the website's ACCESS_SECRET.
