@@ -1,11 +1,21 @@
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
+import { dirname, resolve } from "node:path";
 import { z } from "zod";
 
 /**
  * Where the JSON stores live. On Render a persistent disk is mounted at /data; use it
  * automatically so records survive deploys. DATA_DIR overrides; locally it's the cwd.
  */
-export const DATA_DIR = process.env.DATA_DIR ?? (existsSync("/data") ? "/data" : ".");
+/** True when `dir` is its own mounted filesystem (a real disk), not a plain folder in the container. */
+export function isMount(dir: string) {
+  try {
+    return statSync(dir).dev !== statSync(dirname(resolve(dir))).dev;
+  } catch {
+    return false;
+  }
+}
+const DISK_CANDIDATES = ["/data", "/var/data", "/opt/render/project/data", "/opt/render/project/src/data", "/mnt/data"];
+export const DATA_DIR = process.env.DATA_DIR ?? DISK_CANDIDATES.find(isMount) ?? ".";
 
 /**
  * Load `.env` from the working directory. Variables already set in the

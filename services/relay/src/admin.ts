@@ -1,7 +1,8 @@
+import { readFileSync } from "node:fs";
 import crypto from "node:crypto";
 import { Hono } from "hono";
 import { readAudit } from "./audit.js";
-import { DATA_DIR, config } from "./config.js";
+import { DATA_DIR, isMount, config } from "./config.js";
 import { accessCodes, buys, swaps, users, waitlist, type Buy, type Swap, type User } from "./db.js";
 import { accessEnabled, createCode } from "./access.js";
 import { balances, toNear } from "./near.js";
@@ -60,7 +61,18 @@ function haystack(s: Swap) {
 }
 
 /** Where records are stored, and whether that's the persistent disk. */
-admin.get("/storage", (c) => c.json({ dataDir: DATA_DIR, persistent: DATA_DIR !== "." }));
+admin.get("/storage", (c) => {
+  // Mounted filesystems that look like a persistent disk (not the container's overlay/tmpfs).
+  let mounts: string[] = [];
+  try {
+    mounts = readFileSync("/proc/mounts", "utf8")
+      .split("\n")
+      .map((l) => l.split(" "))
+      .filter((f) => f[1] && !/^(proc|sysfs|tmpfs|devpts|mqueue|cgroup2?|overlay|shm|devtmpfs)$/.test(f[2]) && !f[1].startsWith("/proc") && !f[1].startsWith("/sys") && !f[1].startsWith("/dev"))
+      .map((f) => `${f[1]} (${f[2]})`);
+  } catch {}
+  return c.json({ dataDir: DATA_DIR, dataDirIsDisk: isMount(DATA_DIR), mounts, cwd: process.cwd() });
+});
 
 admin.get("/stats", (c) => {
   const all = swaps.all();
