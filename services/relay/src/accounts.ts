@@ -30,11 +30,27 @@ const PAUSE_AFTER_FAILURE_MS = 30 * 60_000;
 /* ---------- sign-in ---------- */
 
 /** Email verified with PAJ: find or create the account and keep the PAJ session (encrypted). */
-export function signIn(email: string, pajToken: string, pajExpiresAt: string) {
+/**
+ * Next key index whose NEAR address has never been used on-chain. Records can be lost (a wiped
+ * server), so never trust the local count alone: an address that exists on-chain belongs to
+ * someone, and handing it to a new sign-up would give them that person's money.
+ */
+async function freeIndex() {
+  let k = users.nextIndex();
+  for (let tries = 0; tries < 200; tries++, k++) {
+    if (users.all().some((x) => x.key_index === k)) continue;
+    if (!(await accountExists(addressFor(k)))) return k;
+    warn("account", `key index ${k} is already used on-chain; skipping it`);
+  }
+  throw new Error("Couldn't create your account right now. Try again in a moment.");
+}
+
+export async function signIn(email: string, pajToken: string, pajExpiresAt: string) {
   const e = email.toLowerCase();
   let u = users.byEmail(e);
   if (!u) {
-    const key_index = users.nextIndex();
+    const key_index = await freeIndex();
+    if (users.byEmail(e)) return signIn(e, pajToken, pajExpiresAt); // created meanwhile
     const id = `usr_${crypto.randomBytes(8).toString("hex")}`;
     users.insert({
       id,

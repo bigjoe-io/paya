@@ -180,7 +180,7 @@ app.post("/auth/verify", async (c) => {
     audit("sign_in_failed", b.email, { error: (e as Error).message });
     throw e;
   }
-  const u = signIn(b.email, v.token, v.expiresAt);
+  const u = await signIn(b.email, v.token, v.expiresAt);
   const session = createSession(u.id);
   audit("signed_in", b.email, { device: b.deviceId.slice(0, 8), pajExpiresAt: v.expiresAt });
   log("auth", `${u.id} signed in (PAJ session until ${v.expiresAt})`);
@@ -319,7 +319,7 @@ app.post("/me/withdraw", async (c) => {
     audit("withdraw_code_failed", u.email, { error: (e as Error).message });
     throw new Error("That code didn't work. Request a new one.");
   }
-  signIn(u.email, v.token, v.expiresAt); // refreshes the stored PAJ session
+  await signIn(u.email, v.token, v.expiresAt); // refreshes the stored PAJ session
   try {
     return c.json(await withdraw(users.byId(u.id)!, b.to, b.near));
   } catch (e) {

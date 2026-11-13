@@ -257,13 +257,24 @@ admin.post("/import", async (c) => {
   if (foreign.length) return c.json({ error: "This server already has other people's accounts; import refused" }, 409);
   // An email that already has an account here keeps the server's record (newer session/bank); its
   // history still shows because orders are keyed by the NEAR address, which is the same for the same email.
+  // After a wipe, someone may have signed in again and been given a NEW wallet. The backup's record
+  // holds their real wallet (and its money), so it wins: point the account back at it.
+  const repointed: string[] = [];
+  for (const inc of body.users ?? []) {
+    const cur = users.byEmail(inc.email);
+    if (cur && cur.key_index !== inc.key_index && !users.all().some((x) => x.id !== cur.id && x.key_index === inc.key_index)) {
+      users.update(cur.id, { key_index: inc.key_index, address: inc.address });
+      users.event(cur.id, "wallet_restored", { from: cur.address, to: inc.address });
+      repointed.push(cur.id);
+    }
+  }
   const fresh = (body.users ?? []).filter((u) => !users.byEmail(u.email));
   const result = {
     users: users.importRows(fresh),
     swaps: swaps.importRows(body.swaps ?? []),
     buys: buys.importRows(body.buys ?? []),
   };
-  return c.json({ imported: result, totals: { users: users.all().length, swaps: swaps.all().length, buys: buys.all().length } });
+  return c.json({ imported: result, repointed, totals: { users: users.all().length, swaps: swaps.all().length, buys: buys.all().length } });
 });
 
 /* ---------- waitlist + tester access ---------- */
