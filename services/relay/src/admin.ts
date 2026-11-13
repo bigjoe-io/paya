@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import crypto from "node:crypto";
 import { Hono } from "hono";
 import { readAudit } from "./audit.js";
@@ -71,7 +71,13 @@ admin.get("/storage", (c) => {
       .filter((f) => f[1] && !/^(proc|sysfs|tmpfs|devpts|mqueue|cgroup2?|overlay|shm|devtmpfs)$/.test(f[2]) && !f[1].startsWith("/proc") && !f[1].startsWith("/sys") && !f[1].startsWith("/dev"))
       .map((f) => `${f[1]} (${f[2]})`);
   } catch {}
-  return c.json({ dataDir: DATA_DIR, dataDirIsDisk: isMount(DATA_DIR), mounts, cwd: process.cwd() });
+  const files = Object.fromEntries(
+    (["DB_PATH", "BUYS_PATH", "USERS_PATH", "ACCESS_PATH", "WAITLIST_PATH"] as const).map((k) => [
+      k,
+      { path: config[k], fromEnv: Boolean(process.env[k]), exists: existsSync(config[k]) },
+    ]),
+  );
+  return c.json({ dataDir: DATA_DIR, dataDirIsDisk: isMount(DATA_DIR), files, mounts, cwd: process.cwd() });
 });
 
 admin.get("/stats", (c) => {
