@@ -6,7 +6,7 @@ export function Footer() {
         className="flex items-center justify-center gap-8 py-8 text-[15px]"
       >
         <a
-          href="https://x.com/"
+          href="https://x.com/usepaya"
           className="focus-ring -m-2 rounded-md p-2 hover:text-muted-foreground"
           aria-label="Paya on X"
         >

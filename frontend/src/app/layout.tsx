@@ -45,7 +45,7 @@ export const metadata: Metadata = {
     title: "Paya — Buy NEAR with naira, cash out NEAR to your bank",
     description: "Move money between NEAR and your bank account, both ways. Sign in with email.",
   },
-  twitter: { card: "summary_large_image" },
+  twitter: { card: "summary_large_image", site: "@usepaya", creator: "@usepaya" },
   robots: { index: true, follow: true },
   // Google Search Console ownership (HTML tag method). Public by design; override with GOOGLE_SITE_VERIFICATION.
   verification: { google: process.env.GOOGLE_SITE_VERIFICATION ?? "lqEQ5y3u-fTIvwPo47Rz2vCUuMzPfpmWV7ri5Z2YW_I" },

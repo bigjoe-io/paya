@@ -14,7 +14,7 @@ const jsonLd = [
     name: "Paya",
     url: "https://www.usepaya.xyz",
     logo: "https://www.usepaya.xyz/logo.svg",
-    sameAs: ["https://github.com/bigjoe-io/paya"],
+    sameAs: ["https://x.com/usepaya", "https://github.com/bigjoe-io/paya"],
   },
   {
     "@context": "https://schema.org",
