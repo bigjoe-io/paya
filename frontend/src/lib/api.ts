@@ -166,6 +166,22 @@ async function request<T>(path: string, init: RequestInit = {}): Promise<T> {
   return body as T;
 }
 
+/** A token Paya can swap: "near" is native NEAR, anything else is a NEAR token contract. */
+export type SwapToken = { id: string; symbol: string; name: string; decimals: number; icon: string | null; priceUsd: number };
+export type Holding = SwapToken & { balance: string; amount: number; usd: number };
+export type TokenSwapQuote = {
+  from: string;
+  to: string;
+  amountIn: number;
+  amountOut: number;
+  minOut: number;
+  amountInUsd: number | null;
+  amountOutUsd: number | null;
+  max: number;
+  etaSeconds: number | null;
+};
+export type TokenSwapStatus = { status: "processing" | "done" | "refunded" | "failed"; raw: string };
+
 export const api = {
   joinWaitlist: (email: string, source?: string) =>
     request<{ ok: true }>("/waitlist", { method: "POST", body: JSON.stringify({ email, source }) }),
@@ -213,6 +229,14 @@ export const api = {
   cancelBuy: (id: string) => request<Buy>(`/buys/${id}/cancel`, { method: "POST" }),
   markBuySent: (id: string) => request<Buy>(`/buys/${id}/sent`, { method: "POST" }),
   buy: (id: string) => request<Buy>(`/buys/${id}`),
+
+  swapTokens: () => request<SwapToken[]>("/tokens"),
+  holdings: () => request<{ holdings: Holding[]; totalUsd: number }>("/me/holdings"),
+  tokenSwapQuote: (from: string, to: string, amount: number) =>
+    request<TokenSwapQuote>(`/me/token-swap/quote?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${amount}`),
+  tokenSwap: (b: { from: string; to: string; amount: number }) =>
+    request<{ depositAddress: string; txHash: string; amountOut: number; to: string }>("/me/token-swap", { method: "POST", body: JSON.stringify(b) }),
+  tokenSwapStatus: (depositAddress: string) => request<TokenSwapStatus>(`/me/token-swap/${depositAddress}`),
 };
 
 export function formatFiat(amount: number, currency: Pick<Currency, "symbol" | "code"> | string) {

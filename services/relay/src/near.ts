@@ -109,6 +109,84 @@ export const SEND_COST = 2_000_000_000_000_000_000_000n; // 0.002 NEAR
 /** NEAR needed to unwrap wNEAR. ≈0.012 NEAR. */
 export const UNWRAP_COST = GAS.unwrap * WORST_GAS_PRICE + 1n;
 
+/* ---------- NEAR Intents deposits and fungible tokens ---------- */
+
+/** Most NEP-141 tokens take 0.00125 NEAR to register an account; any excess is refunded. */
+const FT_STORAGE = 1_250_000_000_000_000_000_000n;
+
+/** Up-front NEAR (gas at the pessimistic price + storage) a NEAR→token swap deposit needs on top of the amount. */
+export const INTENTS_NEAR_COST = (GAS.storage * 2n + GAS.wrap + GAS.transfer) * WORST_GAS_PRICE + STORAGE_DEPOSIT * 2n;
+/** Up-front NEAR a token→X swap deposit (register + ft_transfer) needs. */
+export const INTENTS_FT_COST = (GAS.storage + GAS.transfer) * WORST_GAS_PRICE + FT_STORAGE;
+/** Up-front NEAR to register the user on a token they're about to receive. */
+export const REGISTER_COST = GAS.storage * WORST_GAS_PRICE + FT_STORAGE;
+
+/** Wrap `amount` NEAR and send it to a NEAR Intents (1Click) deposit address. */
+export async function sendNearToIntents(i: number, depositAddress: string, amount: bigint) {
+  const r = await accountFor(i).signAndSendTransaction({
+    receiverId: wrapContract(),
+    actions: [
+      // Register sender and receiver (no-op + refund if already registered), so near_deposit wraps the full amount.
+      actions.functionCall("storage_deposit", { registration_only: true }, GAS.storage, STORAGE_DEPOSIT),
+      actions.functionCall("storage_deposit", { account_id: depositAddress, registration_only: true }, GAS.storage, STORAGE_DEPOSIT),
+      actions.functionCall("near_deposit", {}, GAS.wrap, amount),
+      actions.functionCall("ft_transfer", { receiver_id: depositAddress, amount: amount.toString(), memo: "paya swap" }, GAS.transfer, 1n),
+    ],
+    waitUntil: "FINAL",
+  });
+  return r.transaction.hash as string;
+}
+
+/** Send `amount` (raw units) of token `contract` to a NEAR Intents deposit address. */
+export async function sendFtToIntents(i: number, contract: string, depositAddress: string, amount: bigint) {
+  const r = await accountFor(i).signAndSendTransaction({
+    receiverId: contract,
+    actions: [
+      actions.functionCall("storage_deposit", { account_id: depositAddress, registration_only: true }, GAS.storage, FT_STORAGE),
+      actions.functionCall("ft_transfer", { receiver_id: depositAddress, amount: amount.toString(), memo: "paya swap" }, GAS.transfer, 1n),
+    ],
+    waitUntil: "FINAL",
+  });
+  return r.transaction.hash as string;
+}
+
+async function view<T>(contractId: string, method: string, args: Record<string, unknown>): Promise<T | null> {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    return ((await provider.callFunction<any>({ contractId, method, args, blockQuery: { finality: "final" } })) as T) ?? null;
+  } catch {
+    return null;
+  }
+}
+
+export async function ftBalance(contract: string, accountId: string): Promise<bigint> {
+  return BigInt((await view<string>(contract, "ft_balance_of", { account_id: accountId })) ?? "0");
+}
+
+export type FtMeta = { symbol: string; name: string; decimals: number; icon: string | null };
+const metaCache = new Map<string, FtMeta | null>();
+export async function ftMetadata(contract: string): Promise<FtMeta | null> {
+  if (metaCache.has(contract)) return metaCache.get(contract)!;
+  const m = await view<FtMeta>(contract, "ft_metadata", {});
+  const v = m ? { symbol: m.symbol, name: m.name, decimals: m.decimals, icon: m.icon ?? null } : null;
+  metaCache.set(contract, v);
+  return v;
+}
+
+/** Register the user on a token so they can receive it (skipped if already registered). */
+export async function ensureRegistered(i: number, contract: string) {
+  const me = addressFor(i);
+  if (contract === wrapContract()) return null; // swaps into NEAR arrive as native NEAR
+  const bal = await view<{ total: string } | null>(contract, "storage_balance_of", { account_id: me });
+  if (bal) return null;
+  const r = await accountFor(i).signAndSendTransaction({
+    receiverId: contract,
+    actions: [actions.functionCall("storage_deposit", { account_id: me, registration_only: true }, GAS.storage, FT_STORAGE)],
+    waitUntil: "FINAL",
+  });
+  return r.transaction.hash as string;
+}
+
 /** Turn wNEAR back into native NEAR. */
 export async function unwrap(i: number, amount: bigint) {
   const r = await accountFor(i).signAndSendTransaction({

@@ -14,6 +14,7 @@ import { audit, last4 } from "./audit.js";
 import { accountView, cashOut, pajTokenOf, requirePaj, setAuto, setBank, signIn, withdraw } from "./accounts.js";
 import { createSession, readSession } from "./secrets.js";
 import { redeem, verifyAccess } from "./access.js";
+import { holdings, quoteSwap, startSwap, swapStatus, tokens } from "./tokenswap.js";
 import { waitlist } from "./db.js";
 import crypto from "node:crypto";
 import { accountExists, fundFromTreasury, toYocto } from "./near.js";
@@ -273,6 +274,34 @@ app.post("/cashout", async (c) => {
  * Send NEAR to another address. Needs a fresh email code every time: a stolen
  * app session alone can't move money anywhere but the user's own bank.
  */
+/* ---------- token swaps inside the account (NEAR Intents) ---------- */
+
+app.get("/tokens", async (c) => c.json(await tokens()));
+
+app.get("/me/holdings", async (c) => c.json(await holdings(me(c, true).address)));
+
+app.get("/me/token-swap/quote", async (c) => {
+  const q = z
+    .object({ from: z.string().min(2).max(80), to: z.string().min(2).max(80), amount: z.coerce.number().positive().max(1e12) })
+    .parse(c.req.query());
+  return c.json(await quoteSwap(me(c, true), q.from, q.to, q.amount));
+});
+
+app.post("/me/token-swap", async (c) => {
+  const b = z
+    .object({ from: z.string().min(2).max(80), to: z.string().min(2).max(80), amount: z.number().positive().max(1e12) })
+    .parse(await c.req.json());
+  const u = me(c, true);
+  try {
+    return c.json(await startSwap(users.byId(u.id)!, b.from, b.to, b.amount));
+  } catch (e) {
+    audit("token_swap_rejected", u.email, { ...b, error: (e as Error).message });
+    throw e;
+  }
+});
+
+app.get("/me/token-swap/:deposit", async (c) => c.json(await swapStatus(me(c, true), c.req.param("deposit"))));
+
 app.post("/me/withdraw", async (c) => {
   const b = z
     .object({

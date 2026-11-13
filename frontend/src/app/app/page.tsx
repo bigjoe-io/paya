@@ -1,32 +1,36 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Landmark, Mail, Zap } from "lucide-react";
 import { Topbar } from "@/components/app/topbar";
 import { SwapCard } from "@/components/app/swap-card";
 import { BuyCard } from "@/components/app/buy-card";
+import { TokenSwapCard } from "@/components/app/token-swap-card";
+import { HoldingsList } from "@/components/app/tokens";
 import { LinkBank } from "@/components/app/link-bank";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
 import { Amount } from "@/components/app/ui";
 import { useAccount } from "@/components/app/account-provider";
 import { useSession } from "@/components/app/session-provider";
-import { api, type Currency } from "@/lib/api";
+import { api, type Currency, type Holding } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import { usePersistentState } from "@/lib/persist";
 
 const TABS = [
   { id: "buy", label: "Buy", soon: false },
   { id: "sell", label: "Sell", soon: false },
+  { id: "swap", label: "Swap", soon: false },
   { id: "bridge", label: "Bridge", soon: true },
 ];
 
 export default function SwapPage() {
   const { signedIn } = useSession();
-  const { me, loading, error: meError } = useAccount();
+  const { me, loading, error: meError, refresh } = useAccount();
   const [currencies, setCurrencies] = useState<Currency[] | null>(null);
   const [prices, setPrices] = useState<{ nearUsd: number; ngnPerUsd: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = usePersistentState<"buy" | "sell">("tab", "sell");
+  const [tab, setTab] = usePersistentState<"buy" | "sell" | "swap">("tab", "sell");
+  const [holdings, setHoldings] = useState<{ holdings: Holding[]; totalUsd: number } | null>(null);
   const [signIn, setSignIn] = useState(false);
 
   useEffect(() => {
@@ -45,7 +49,22 @@ export default function SwapPage() {
     };
   }, []);
 
-  const usd = me && prices ? me.balance * prices.nearUsd : null;
+  const loadHoldings = useCallback(() => {
+    api.holdings().then(setHoldings, () => {});
+  }, []);
+  useEffect(() => {
+    if (!signedIn || !me) return;
+    loadHoldings();
+    const t = setInterval(loadHoldings, 30_000);
+    return () => clearInterval(t);
+  }, [signedIn, me, loadHoldings]);
+  const onTokensChanged = useCallback(() => {
+    loadHoldings();
+    void refresh();
+  }, [loadHoldings, refresh]);
+
+  // Total = every token held (NEAR, USDC on NEAR, …); falls back to NEAR alone until token prices load.
+  const usd = holdings ? holdings.totalUsd : me && prices ? me.balance * prices.nearUsd : null;
 
   return (
     <>
@@ -60,7 +79,11 @@ export default function SwapPage() {
                 <Amount>{usd === null ? "…" : `$${usd.toLocaleString("en-US", { maximumFractionDigits: 2 })}`}</Amount>
               </p>
               <p className="mt-1 text-sm text-muted-foreground">
-                <Amount>{`${me.balance.toFixed(4)} NEAR`}</Amount>
+                {holdings && holdings.holdings.length > 1 ? (
+                  <Amount>{`${holdings.holdings.length} tokens`}</Amount>
+                ) : (
+                  <Amount>{`${me.balance.toFixed(4)} NEAR`}</Amount>
+                )}
                 {usd !== null && prices?.ngnPerUsd ? (
                   <>
                     {" · "}
@@ -73,6 +96,8 @@ export default function SwapPage() {
             <p className="mt-1 text-sm text-muted-foreground">{signedIn ? "Loading your account…" : "Sign in to see your balance."}</p>
           )}
         </section>
+
+        {signedIn && me ? <HoldingsList holdings={holdings?.holdings ?? null} /> : null}
 
         {error || meError ? (
           <p role="alert" className="glass-card mt-8 rounded-3xl p-6 text-sm text-warning">
@@ -92,7 +117,7 @@ export default function SwapPage() {
           </section>
         ) : (
           <>
-            <div role="tablist" aria-label="Mode" className="mt-8 grid grid-cols-3 gap-1 rounded-2xl border border-border bg-card p-1">
+            <div role="tablist" aria-label="Mode" className="mt-8 grid grid-cols-4 gap-1 rounded-2xl border border-border bg-card p-1">
               {TABS.map((t) => (
                 <button
                   key={t.id}
@@ -101,7 +126,7 @@ export default function SwapPage() {
                   aria-selected={tab === t.id}
                   aria-disabled={t.soon || undefined}
                   tabIndex={t.soon ? -1 : 0}
-                  onClick={(e) => (t.soon ? e.preventDefault() : setTab(t.id as "buy" | "sell"))}
+                  onClick={(e) => (t.soon ? e.preventDefault() : setTab(t.id as "buy" | "sell" | "swap"))}
                   className={cn(
                     "focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors duration-100",
                     t.soon
@@ -121,6 +146,8 @@ export default function SwapPage() {
             <div className="mt-4">
               {tab === "buy" ? (
                 <BuyCard me={me} currencies={currencies.filter((c) => !c.comingSoon)} />
+              ) : tab === "swap" ? (
+                <TokenSwapCard holdings={holdings?.holdings ?? []} onChanged={onTokensChanged} />
               ) : (
                 <SwapCard me={me} currencies={currencies} />
               )}

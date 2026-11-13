@@ -138,7 +138,7 @@ const busy = new Set<string>(); // one money movement per user at a time
 const cooldownUntil = new Map<string, number>(); // RPC state can trail a just-sent transfer by a block or two
 const COOLDOWN_MS = 8000;
 
-async function exclusive<T>(u: User, fn: () => Promise<T>): Promise<T> {
+export async function exclusive<T>(u: User, fn: () => Promise<T>): Promise<T> {
   if (busy.has(u.id) || (cooldownUntil.get(u.id) ?? 0) > Date.now())
     throw new Error("Another transfer from your account is in progress. Try again in a moment.");
   busy.add(u.id);
@@ -149,7 +149,7 @@ async function exclusive<T>(u: User, fn: () => Promise<T>): Promise<T> {
   }
 }
 /** Call right after (or on a failed attempt at) an on-chain send. */
-const cool = (u: User) => cooldownUntil.set(u.id, Date.now() + COOLDOWN_MS);
+export const cool = (u: User) => cooldownUntil.set(u.id, Date.now() + COOLDOWN_MS);
 
 const hasOpenCashOut = (u: User) => swaps.active().some((s) => s.account_id === u.address && s.status === "awaiting_deposit");
 
