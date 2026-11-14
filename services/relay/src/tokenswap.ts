@@ -23,17 +23,17 @@ import {
 } from "./near.js";
 import { cool, exclusive, setAuto } from "./accounts.js";
 
-const API = "https://1click.chaindefuser.com/v0";
-const headers = (): Record<string, string> => ({
+export const API = "https://1click.chaindefuser.com/v0";
+export const headers = (): Record<string, string> => ({
   "content-type": "application/json",
   ...(process.env.ONECLICK_JWT ? { authorization: `Bearer ${process.env.ONECLICK_JWT}` } : {}),
 });
 
 /** "near" is native NEAR (wNEAR under the hood); every other id is a token contract. */
 export type Token = { id: string; symbol: string; name: string; decimals: number; icon: string | null; priceUsd: number };
-const NEAR_ID = "near";
-const assetOf = (id: string) => `nep141:${id === NEAR_ID ? wrapContract() : id}`;
-const contractOf = (id: string) => (id === NEAR_ID ? wrapContract() : id);
+export const NEAR_ID = "near";
+export const assetOf = (id: string) => `nep141:${id === NEAR_ID ? wrapContract() : id}`;
+export const contractOf = (id: string) => (id === NEAR_ID ? wrapContract() : id);
 
 const FIRST = ["near", "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1", "usdt.tether-token.near"];
 const MAX_ICON = 24_000; // data-URI chars; bigger icons fall back to a letter
@@ -72,7 +72,7 @@ export async function tokens(): Promise<Token[]> {
   return list;
 }
 
-const tokenById = async (id: string) => {
+export const tokenById = async (id: string) => {
   const t = (await tokens()).find((x) => x.id === id);
   if (!t) throw new Error("That token isn't supported for swaps.");
   return t;
@@ -113,7 +113,7 @@ function make(t: Token, raw: bigint): Holding {
 }
 
 /** Largest amount of `from` the user can swap right now (raw units). NEAR keeps fees + reserve back. */
-async function spendable(u: User, from: Token): Promise<bigint> {
+export async function spendable(u: User, from: Token): Promise<bigint> {
   const bal = await balances(u.address);
   const reserve = toYocto(config.RESERVE_NEAR) + REGISTER_COST;
   if (from.id === NEAR_ID) {
@@ -123,7 +123,7 @@ async function spendable(u: User, from: Token): Promise<bigint> {
   return ftBalance(from.id, u.address);
 }
 
-const toRaw = (amount: number, decimals: number) => {
+export const toRaw = (amount: number, decimals: number) => {
   const [w, f = ""] = amount.toFixed(Math.min(decimals, 12)).split(".");
   return BigInt(w + f.padEnd(decimals, "0").slice(0, decimals));
 };
@@ -262,13 +262,13 @@ export async function swapStatus(u: User, depositAddress: string) {
 const NAMED_OR_IMPLICIT = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
 const WALLET_KEEP = toYocto(0.08); // gas for the wallet's transactions + storage + what wallets keep back
 
-function checkAccount(account: string) {
+export function checkAccount(account: string) {
   const a = account.trim().toLowerCase();
   if (a.length < 2 || a.length > 64 || !NAMED_OR_IMPLICIT.test(a)) throw new Error("That isn't a NEAR account.");
   return a;
 }
 
-async function walletSpendable(account: string, from: Token): Promise<bigint> {
+export async function walletSpendable(account: string, from: Token): Promise<bigint> {
   if (from.id === NEAR_ID) {
     const { available } = await balances(account);
     return available > WALLET_KEEP ? available - WALLET_KEEP : 0n;
@@ -300,11 +300,11 @@ export type WalletTx = {
   receiverId: string;
   actions: { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }[];
 };
-const fc = (methodName: string, args: object, deposit: string, gas = "30000000000000") => ({
+export const fc = (methodName: string, args: object, deposit: string, gas = "30000000000000") => ({
   type: "FunctionCall" as const,
   params: { methodName, args, gas, deposit },
 });
-const STORAGE = "1250000000000000000000"; // 0.00125 NEAR
+export const STORAGE = "1250000000000000000000"; // 0.00125 NEAR
 
 /**
  * A live quote plus the transactions the wallet signs: register the wallet on the token it will

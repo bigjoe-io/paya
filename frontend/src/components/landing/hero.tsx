@@ -12,7 +12,7 @@ export function Hero() {
           NEAR to your bank. And back.
         </h1>
         <p className="mt-4 max-w-md text-lg text-muted-foreground text-pretty">
-          Sign in with your email or connect your NEAR wallet. Buy NEAR with a bank transfer, cash it out to your bank, and swap any token on NEAR.
+          Sign in with your email or connect your NEAR wallet. Buy NEAR with a bank transfer, cash it out to your bank, swap any token on NEAR, and bridge to other chains.
         </p>
         <OpenAppButton className="mt-8" />
         <p className="mt-4 text-sm text-muted-foreground">

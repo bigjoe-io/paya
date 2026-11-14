@@ -14,6 +14,7 @@ import { audit, last4 } from "./audit.js";
 import { accountView, cashOut, pajTokenOf, requirePaj, setAuto, setBank, signIn, withdraw } from "./accounts.js";
 import { createSession, readSession } from "./secrets.js";
 import { redeem, verifyAccess } from "./access.js";
+import { accountBridgeIn, accountBridgeOut, accountQuoteOut, bridgeChains, quoteIn, walletBridgeIn, walletBridgeOut, walletQuoteOut } from "./bridge.js";
 import { holdings, quoteSwap, startSwap, swapStatus, tokens, walletQuote, walletStatus, walletSubmit, walletSwap } from "./tokenswap.js";
 import { waitlist } from "./db.js";
 import crypto from "node:crypto";
@@ -321,6 +322,52 @@ app.post("/wallet/swap/submit", async (c) => {
   return c.json(await walletSubmit(b.depositAddress, b.txHash));
 });
 app.get("/wallet/swap/:deposit", async (c) => c.json(await walletStatus(c.req.param("deposit"))));
+
+/* ---------- bridge (NEAR ⇄ other chains, via NEAR Intents) ---------- */
+
+app.get("/bridge/chains", async (c) => c.json(await bridgeChains()));
+
+const outQ = z.object({ from: z.string().min(2).max(80), toAsset: z.string().min(5).max(200), amount: z.coerce.number().positive().max(1e12), recipient: z.string().min(20).max(120) });
+const inQ = z.object({ fromAsset: z.string().min(5).max(200), to: z.string().min(2).max(80), amount: z.coerce.number().positive().max(1e12) });
+
+app.get("/me/bridge/out/quote", async (c) => c.json(await accountQuoteOut(me(c, true), outQ.parse(c.req.query()))));
+app.post("/me/bridge/out", async (c) => {
+  const b = outQ.extend({ otp: z.string().regex(/^\d{4,8}$/, "Enter the code from the email"), deviceId: z.string().min(8).max(100) }).parse(await c.req.json());
+  const u = me(c, true);
+  let v;
+  try {
+    v = await paj.verifySession(u.email, b.otp, b.deviceId);
+  } catch (e) {
+    audit("bridge_code_failed", u.email, { error: (e as Error).message });
+    throw new Error("That code didn't work. Request a new one.");
+  }
+  await signIn(u.email, v.token, v.expiresAt);
+  return c.json(await accountBridgeOut(users.byId(u.id)!, b));
+});
+app.get("/me/bridge/in/quote", async (c) => c.json(await quoteIn(me(c, true).address, inQ.parse(c.req.query()))));
+app.post("/me/bridge/in", async (c) => {
+  const b = inQ.extend({ amount: z.number().positive().max(1e12), refundAddress: z.string().min(20).max(120) }).parse(await c.req.json());
+  const u = me(c, true);
+  return c.json(await accountBridgeIn(users.byId(u.id)!, b));
+});
+
+const acct = z.object({ account: z.string().min(2).max(64) });
+app.get("/wallet/bridge/out/quote", async (c) => {
+  const q = outQ.merge(acct).parse(c.req.query());
+  return c.json(await walletQuoteOut(q.account, q));
+});
+app.post("/wallet/bridge/out", async (c) => {
+  const b = outQ.merge(acct).extend({ amount: z.number().positive().max(1e12) }).parse(await c.req.json());
+  return c.json(await walletBridgeOut(b.account, b));
+});
+app.get("/wallet/bridge/in/quote", async (c) => {
+  const q = inQ.merge(acct).parse(c.req.query());
+  return c.json(await quoteIn(q.account.toLowerCase(), q));
+});
+app.post("/wallet/bridge/in", async (c) => {
+  const b = inQ.merge(acct).extend({ amount: z.number().positive().max(1e12), refundAddress: z.string().min(20).max(120) }).parse(await c.req.json());
+  return c.json(await walletBridgeIn(b.account, b));
+});
 
 app.get("/me/token-swap/:deposit", async (c) => c.json(await swapStatus(me(c, true), c.req.param("deposit"))));
 

@@ -7,6 +7,8 @@ import { Amount, PageTitle } from "@/components/app/ui";
 import { HoldingsList, fmtUsd } from "@/components/app/tokens";
 import { TokenSwapCard, type SwapEngine } from "@/components/app/token-swap-card";
 import { useWallet } from "@/components/app/wallet-provider";
+import { BridgeCard } from "@/components/app/bridge-card";
+import { cn } from "@/lib/utils";
 import { api, type Holding } from "@/lib/api";
 
 const short = (a: string) => (a.length > 24 ? `${a.slice(0, 8)}…${a.slice(-6)}` : a);
@@ -16,6 +18,7 @@ export default function WalletSwapPage() {
   const { accountId, ready, connecting, connect, disconnect, signAndSendAll } = useWallet();
   const [holdings, setHoldings] = useState<{ holdings: Holding[]; totalUsd: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tab, setTab] = useState<"swap" | "bridge">("swap");
 
   const load = useCallback(() => {
     if (!accountId) return;
@@ -52,10 +55,9 @@ export default function WalletSwapPage() {
     <>
       <Topbar />
       <main className="mx-auto w-full max-w-xl px-4 pb-12">
-        <PageTitle>Wallet swap</PageTitle>
+        <PageTitle>Wallet</PageTitle>
         <p className="mt-1 text-sm text-muted-foreground text-pretty">
-          Connect your own NEAR wallet and swap tokens in it, e.g. NEAR to USDC. Your wallet approves every swap and the tokens come
-          straight back to it.
+          Connect your own NEAR wallet to swap tokens or bridge them to other chains. Your wallet approves every move and Paya never holds the funds.
         </p>
 
         {!ready ? (
@@ -114,7 +116,30 @@ export default function WalletSwapPage() {
 
             <HoldingsList holdings={holdings?.holdings ?? null} />
 
-            <div className="mt-6">{engine ? <TokenSwapCard holdings={holdings?.holdings ?? []} onChanged={load} engine={engine} /> : null}</div>
+            <div role="tablist" aria-label="Mode" className="mt-6 grid grid-cols-2 gap-1 rounded-2xl border border-border bg-card p-1">
+              {(["swap", "bridge"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  role="tab"
+                  aria-selected={tab === t}
+                  onClick={() => setTab(t)}
+                  className={cn(
+                    "focus-ring min-h-11 rounded-xl text-sm font-medium capitalize transition-colors duration-100",
+                    tab === t ? "bg-panel text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+            <div className="mt-4">
+              {tab === "swap" ? (
+                engine ? <TokenSwapCard holdings={holdings?.holdings ?? []} onChanged={load} engine={engine} /> : null
+              ) : (
+                <BridgeCard mode={{ kind: "wallet", account: accountId, signAndSendAll }} holdings={holdings?.holdings ?? []} onChanged={load} />
+              )}
+            </div>
           </>
         )}
       </main>

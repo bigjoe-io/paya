@@ -6,6 +6,7 @@ import { Topbar } from "@/components/app/topbar";
 import { SwapCard } from "@/components/app/swap-card";
 import { BuyCard } from "@/components/app/buy-card";
 import { TokenSwapCard } from "@/components/app/token-swap-card";
+import { BridgeCard } from "@/components/app/bridge-card";
 import { HoldingsList } from "@/components/app/tokens";
 import { LinkBank } from "@/components/app/link-bank";
 import { SignInDialog } from "@/components/app/sign-in-dialog";
@@ -20,6 +21,7 @@ const TABS = [
   { id: "buy", label: "Buy", soon: false },
   { id: "sell", label: "Sell", soon: false },
   { id: "swap", label: "Swap", soon: false },
+  { id: "bridge", label: "Bridge", soon: false },
 ];
 
 export default function SwapPage() {
@@ -28,7 +30,7 @@ export default function SwapPage() {
   const [currencies, setCurrencies] = useState<Currency[] | null>(null);
   const [prices, setPrices] = useState<{ nearUsd: number; ngnPerUsd: number | null } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [tab, setTab] = usePersistentState<"buy" | "sell" | "swap">("tab", "sell");
+  const [tab, setTab] = usePersistentState<"buy" | "sell" | "swap" | "bridge">("tab", "sell");
   const [holdings, setHoldings] = useState<{ holdings: Holding[]; totalUsd: number } | null>(null);
   const [signIn, setSignIn] = useState(false);
 
@@ -116,7 +118,7 @@ export default function SwapPage() {
           </section>
         ) : (
           <>
-            <div role="tablist" aria-label="Mode" className="mt-8 grid grid-cols-3 gap-1 rounded-2xl border border-border bg-card p-1">
+            <div role="tablist" aria-label="Mode" className="mt-8 grid grid-cols-4 gap-1 rounded-2xl border border-border bg-card p-1">
               {TABS.map((t) => (
                 <button
                   key={t.id}
@@ -125,7 +127,7 @@ export default function SwapPage() {
                   aria-selected={tab === t.id}
                   aria-disabled={t.soon || undefined}
                   tabIndex={t.soon ? -1 : 0}
-                  onClick={(e) => (t.soon ? e.preventDefault() : setTab(t.id as "buy" | "sell" | "swap"))}
+                  onClick={(e) => (t.soon ? e.preventDefault() : setTab(t.id as "buy" | "sell" | "swap" | "bridge"))}
                   className={cn(
                     "focus-ring inline-flex min-h-11 items-center justify-center gap-2 rounded-xl text-sm font-medium transition-colors duration-100",
                     t.soon
@@ -147,6 +149,8 @@ export default function SwapPage() {
                 <BuyCard me={me} currencies={currencies.filter((c) => !c.comingSoon)} />
               ) : tab === "swap" ? (
                 <TokenSwapCard holdings={holdings?.holdings ?? []} onChanged={onTokensChanged} />
+              ) : tab === "bridge" ? (
+                <BridgeCard mode={{ kind: "account" }} holdings={holdings?.holdings ?? []} onChanged={onTokensChanged} />
               ) : (
                 <SwapCard me={me} currencies={currencies} />
               )}

@@ -184,7 +184,34 @@ export type WalletTx = {
   receiverId: string;
   actions: { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }[];
 };
+export type ChainToken = { assetId: string; chain: string; symbol: string; decimals: number; priceUsd: number };
+export type BridgeChain = { id: string; name: string; tokens: ChainToken[] };
+export type BridgeQuote = {
+  amountIn: number;
+  amountOut: number;
+  minOut: number;
+  amountInUsd: number | null;
+  amountOutUsd: number | null;
+  etaSeconds: number | null;
+  max: number | null;
+};
+export type DepositInstructions = {
+  depositAddress: string;
+  depositMemo: string | null;
+  chain: string;
+  symbol: string;
+  amount: number;
+  amountOut: number;
+  to: string;
+  deadline: string | null;
+  registration: WalletTx | null;
+};
 export type TokenSwapStatus = { status: "processing" | "done" | "refunded" | "failed"; raw: string };
+
+const qs = (o: Record<string, string | number>) =>
+  Object.entries(o)
+    .map(([k, v]) => `${k}=${encodeURIComponent(String(v))}`)
+    .join("&");
 
 export const api = {
   joinWaitlist: (email: string, source?: string) =>
@@ -252,6 +279,21 @@ export const api = {
   walletSubmit: (depositAddress: string, txHash: string) =>
     request<{ ok: true }>("/wallet/swap/submit", { method: "POST", body: JSON.stringify({ depositAddress, txHash }) }),
   walletSwapStatus: (depositAddress: string) => request<TokenSwapStatus>(`/wallet/swap/${depositAddress}`),
+
+  bridgeChains: () => request<BridgeChain[]>("/bridge/chains"),
+  bridgeOutQuote: (b: { from: string; toAsset: string; amount: number; recipient: string }, account?: string) =>
+    request<BridgeQuote>(`${account ? "/wallet" : "/me"}/bridge/out/quote?${qs({ ...b, ...(account ? { account } : {}) })}`),
+  bridgeInQuote: (b: { fromAsset: string; to: string; amount: number }, account?: string) =>
+    request<BridgeQuote>(`${account ? "/wallet" : "/me"}/bridge/in/quote?${qs({ ...b, ...(account ? { account } : {}) })}`),
+  bridgeOut: (b: { from: string; toAsset: string; amount: number; recipient: string; otp: string; deviceId: string }) =>
+    request<{ depositAddress: string; amountOut: number; txHash: string }>("/me/bridge/out", { method: "POST", body: JSON.stringify(b) }),
+  walletBridgeOut: (b: { account: string; from: string; toAsset: string; amount: number; recipient: string }) =>
+    request<{ depositAddress: string; amountOut: number; transactions: WalletTx[] }>("/wallet/bridge/out", { method: "POST", body: JSON.stringify(b) }),
+  bridgeIn: (b: { fromAsset: string; to: string; amount: number; refundAddress: string }, account?: string) =>
+    request<DepositInstructions>(account ? "/wallet/bridge/in" : "/me/bridge/in", {
+      method: "POST",
+      body: JSON.stringify(account ? { ...b, account } : b),
+    }),
 };
 
 export function formatFiat(amount: number, currency: Pick<Currency, "symbol" | "code"> | string) {

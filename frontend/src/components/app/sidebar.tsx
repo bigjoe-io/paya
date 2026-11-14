@@ -13,7 +13,7 @@ import { SUPPORT_URL } from "@/lib/links";
 
 const main = [
   { href: "/app", label: "Swap", icon: ArrowLeftRight },
-  { href: "/app/wallet", label: "Wallet swap", icon: Wallet },
+  { href: "/app/wallet", label: "Wallet", icon: Wallet },
 ];
 const markets = [{ href: "/app/earn", label: "Earn", icon: TrendingUp, soon: true }];
 const more = [
