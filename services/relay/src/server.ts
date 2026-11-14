@@ -14,6 +14,7 @@ import { audit, last4 } from "./audit.js";
 import { accountView, cashOut, pajTokenOf, requirePaj, setAuto, setBank, signIn, withdraw } from "./accounts.js";
 import { createSession, readSession } from "./secrets.js";
 import { redeem, verifyAccess } from "./access.js";
+import { askPaya } from "./agent.js";
 import { accountBridgeIn, accountBridgeOut, accountQuoteOut, bridgeChains, quoteIn, walletBridgeIn, walletBridgeOut, walletQuoteOut } from "./bridge.js";
 import { holdings, quoteSwap, startSwap, swapStatus, tokens, walletQuote, walletStatus, walletSubmit, walletSwap } from "./tokenswap.js";
 import { waitlist } from "./db.js";
@@ -367,6 +368,14 @@ app.get("/wallet/bridge/in/quote", async (c) => {
 app.post("/wallet/bridge/in", async (c) => {
   const b = inQ.merge(acct).extend({ amount: z.number().positive().max(1e12), refundAddress: z.string().min(20).max(120) }).parse(await c.req.json());
   return c.json(await walletBridgeIn(b.account, b));
+});
+
+/* ---------- Ask Paya (chat assistant; proposes, never moves money) ---------- */
+app.post("/me/ask", async (c) => {
+  const b = z
+    .object({ messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().min(1).max(2000) })).min(1).max(40) })
+    .parse(await c.req.json());
+  return c.json(await askPaya(me(c, true), b.messages));
 });
 
 app.get("/me/token-swap/:deposit", async (c) => c.json(await swapStatus(me(c, true), c.req.param("deposit"))));

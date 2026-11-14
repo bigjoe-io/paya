@@ -206,6 +206,11 @@ export type DepositInstructions = {
   deadline: string | null;
   registration: WalletTx | null;
 };
+export type Proposal =
+  | { id: string; kind: "swap"; from: string; to: string; amount: number; fromSymbol: string; toSymbol: string; amountOut: number; minOut: number }
+  | { id: string; kind: "cashout"; near: number; fiatOut: number; currency: string; bank: string }
+  | { id: string; kind: "bridge_out"; from: string; fromSymbol: string; toAsset: string; toSymbol: string; chain: string; amount: number; recipient: string; amountOut: number }
+  | { id: string; kind: "send_near"; to: string; near: number };
 export type TokenSwapStatus = { status: "processing" | "done" | "refunded" | "failed"; raw: string };
 
 const qs = (o: Record<string, string | number>) =>
@@ -280,6 +285,8 @@ export const api = {
     request<{ ok: true }>("/wallet/swap/submit", { method: "POST", body: JSON.stringify({ depositAddress, txHash }) }),
   walletSwapStatus: (depositAddress: string) => request<TokenSwapStatus>(`/wallet/swap/${depositAddress}`),
 
+  ask: (messages: { role: "user" | "assistant"; text: string }[]) =>
+    request<{ reply: string; proposals: Proposal[] }>("/me/ask", { method: "POST", body: JSON.stringify({ messages }) }),
   bridgeChains: () => request<BridgeChain[]>("/bridge/chains"),
   bridgeOutQuote: (b: { from: string; toAsset: string; amount: number; recipient: string }, account?: string) =>
     request<BridgeQuote>(`${account ? "/wallet" : "/me"}/bridge/out/quote?${qs({ ...b, ...(account ? { account } : {}) })}`),

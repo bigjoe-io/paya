@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { ArrowLeftRight, CircleUser, Clock, LogIn, LogOut, MessageSquare, TrendingUp, Wallet } from "lucide-react";
+import { ArrowLeftRight, CircleUser, Clock, LogIn, LogOut, MessageSquare, TrendingUp, Sparkles, Wallet } from "lucide-react";
 import { Logo } from "@/components/logo";
 import { shortAddress, useAccount } from "@/components/app/account-provider";
 import { useSession } from "@/components/app/session-provider";
@@ -14,6 +14,7 @@ import { SUPPORT_URL } from "@/lib/links";
 const main = [
   { href: "/app", label: "Swap", icon: ArrowLeftRight },
   { href: "/app/wallet", label: "Wallet", icon: Wallet },
+  { href: "/app/ask", label: "Ask Paya", icon: Sparkles },
 ];
 const markets = [{ href: "/app/earn", label: "Earn", icon: TrendingUp, soon: true }];
 const more = [
