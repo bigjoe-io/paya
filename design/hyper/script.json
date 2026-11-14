@@ -293,5 +293,58 @@
         "vo": "Docs and a ready-made example agent are in the repo. Start building today."
       }
     ]
+  },
+  "market": {
+    "title": [
+      "MEME",
+      "MARKET"
+    ],
+    "rail": [
+      "Browse coins",
+      "Launch yours",
+      "It's live",
+      "Trade"
+    ],
+    "steps": [
+      {
+        "vo": "Paya now has a meme coin market, on NEAR."
+      },
+      {
+        "shot": "market",
+        "focus": [
+          0.35,
+          0.2
+        ],
+        "caption": "Every coin launched on Paya",
+        "vo": "See every coin launched on Paya, with live prices and liquidity."
+      },
+      {
+        "shot": "market-launch",
+        "focus": [
+          0.5,
+          0.4
+        ],
+        "caption": "Launch your own in one step",
+        "vo": "Launch your own. Pick a name, a ticker and an image, and see every cost up front."
+      },
+      {
+        "shot": "market-live",
+        "focus": [
+          0.5,
+          0.42
+        ],
+        "caption": "Live and tradable right away",
+        "vo": "It's created with NEAR's official token factory, with a Ref Finance pool, so it trades right away."
+      },
+      {
+        "shot": "market-trade",
+        "focus": [
+          0.5,
+          0.62
+        ],
+        "caption": "Buy and sell with NEAR",
+        "vo": "Buy and sell any coin with NEAR. You see the price and the minimum before you confirm."
+      }
+    ]
   }
 }

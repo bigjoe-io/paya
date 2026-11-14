@@ -15,6 +15,7 @@ import { accountView, cashOut, pajTokenOf, requirePaj, setAuto, setBank, signIn,
 import { createSession, readSession } from "./secrets.js";
 import { redeem, verifyAccess } from "./access.js";
 import { askPaya } from "./agent.js";
+import { accountTrade, coin, launch, launchCost, market, MEMES_LIVE, quoteTrade, walletTrade } from "./memes.js";
 import { accountBridgeIn, accountBridgeOut, accountQuoteOut, bridgeChains, quoteIn, walletBridgeIn, walletBridgeOut, walletQuoteOut } from "./bridge.js";
 import { holdings, quoteSwap, startSwap, swapStatus, tokens, walletQuote, walletStatus, walletSubmit, walletSwap } from "./tokenswap.js";
 import { waitlist } from "./db.js";
@@ -376,6 +377,37 @@ app.post("/me/ask", async (c) => {
     .object({ messages: z.array(z.object({ role: z.enum(["user", "assistant"]), text: z.string().min(1).max(2000) })).min(1).max(40) })
     .parse(await c.req.json());
   return c.json(await askPaya(me(c, true), b.messages));
+});
+
+/* ---------- meme coin market (NEAR token factory + Ref Finance) ---------- */
+const launchQ = z.object({
+  name: z.string().min(2).max(32),
+  symbol: z.string().min(2).max(8),
+  description: z.string().max(280).optional(),
+  icon: z.string().max(24_000).nullable().optional(),
+  supply: z.number().int().min(1000).max(1e15),
+  liquidityNear: z.number().min(0.5).max(10_000),
+  liquidityPercent: z.number().min(10).max(100),
+});
+app.get("/memes", async (c) => c.json({ live: MEMES_LIVE, coins: await market() }));
+app.get("/memes/:id", async (c) => c.json(await coin(c.req.param("id"))));
+app.get("/memes/:id/quote", async (c) => {
+  const q = z.object({ side: z.enum(["buy", "sell"]), amount: z.coerce.number().positive().max(1e15) }).parse(c.req.query());
+  return c.json(await quoteTrade(c.req.param("id"), q.side, q.amount));
+});
+app.post("/memes/cost", async (c) => c.json(await launchCost(launchQ.parse(await c.req.json()))));
+app.post("/me/memes/launch", async (c) => {
+  const u = me(c, true);
+  return c.json(await launch(users.byId(u.id)!, launchQ.parse(await c.req.json())));
+});
+app.post("/me/memes/:id/trade", async (c) => {
+  const b = z.object({ side: z.enum(["buy", "sell"]), amount: z.number().positive().max(1e15) }).parse(await c.req.json());
+  const u = me(c, true);
+  return c.json(await accountTrade(users.byId(u.id)!, c.req.param("id"), b.side, b.amount));
+});
+app.post("/wallet/memes/:id/trade", async (c) => {
+  const b = z.object({ account: z.string().min(2).max(64), side: z.enum(["buy", "sell"]), amount: z.number().positive().max(1e15) }).parse(await c.req.json());
+  return c.json(await walletTrade(b.account.toLowerCase(), c.req.param("id"), b.side, b.amount));
 });
 
 app.get("/me/token-swap/:deposit", async (c) => c.json(await swapStatus(me(c, true), c.req.param("deposit"))));

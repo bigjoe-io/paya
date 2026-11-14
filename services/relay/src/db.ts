@@ -269,3 +269,22 @@ export type WaitlistEntry = {
   events?: SwapEvent[];
 };
 export const waitlist = createStore<WaitlistEntry>(config.WAITLIST_PATH, "waitlist entry");
+
+/** A meme coin launched through Paya (NEAR token factory + Ref Finance pool). */
+export type Meme = {
+  id: string; // token contract, e.g. doge.tkn.primitives.near
+  name: string;
+  symbol: string;
+  icon: string | null; // data URI (small)
+  description: string;
+  decimals: number;
+  total_supply: string; // raw units
+  creator: string; // NEAR account that launched it
+  pool_id: number | null; // Ref Finance pool (token / wNEAR)
+  status: "creating" | "live" | "failed";
+  error: string | null;
+  create_tx: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export const memes = createStore<Meme>(config.MEMES_PATH, "meme");

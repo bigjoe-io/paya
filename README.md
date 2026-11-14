@@ -1,5 +1,7 @@
 # Paya
 
+**🌐 Website: [usepaya.xyz](https://www.usepaya.xyz) · 𝕏: [@usepaya](https://x.com/usepaya) · 💬 Telegram: [t.me/+6bF2vlPxU_kwMzk0](https://t.me/+6bF2vlPxU_kwMzk0) · 📚 Docs: [usepaya.xyz/docs](https://www.usepaya.xyz/docs)**
+
 > ## 🧑‍⚖️ Judges: try Paya live
 >
 > **Open [usepaya.xyz/app](https://www.usepaya.xyz/app). No access code needed.**
@@ -11,7 +13,7 @@
 
 ![Paya app: buy NEAR with naira by bank transfer](docs/app-screenshot.png)
 
-**Paya moves money between NEAR and African bank accounts, in both directions, and across chains.** Sign in with your email (no seed phrase) or connect your own wallet. Buy NEAR with a bank transfer, cash NEAR out to your bank, swap any token on NEAR, bridge to 10 other chains, or ask the built-in AI assistant to do it for you. Developers and AI agents can use the same rails through a public, non-custodial API.
+**Paya moves money between NEAR and African bank accounts, in both directions, and across chains.** Sign in with your email (no seed phrase) or connect your own wallet. Buy NEAR with a bank transfer, cash NEAR out to your bank, swap any token on NEAR, bridge to 10 other chains, launch and trade meme coins, or ask the built-in AI assistant to do it for you. Developers and AI agents can use the same rails through a public, non-custodial API.
 
 Built at **NEAR HACKATHON** (1–14 November 2026). Track: **08, Real-World Money**. Also relevant to **Agent Economy** (Ask Paya and the Agent API).
 
@@ -32,13 +34,16 @@ People and businesses in Africa are increasingly paid in crypto, but rent, salar
 | **Send NEAR** | Send NEAR to any `.near` name or 64-hex address. Every send needs a fresh code from your email. | `/app/account` → Send NEAR | NEAR transfers |
 | **Connect wallet** | Connect any NEAR wallet and swap or bridge from it. The wallet signs; outputs go back to it. Paya never holds funds or keys. | `/app/wallet` | NEAR Connect + NEAR Intents |
 | **Ask Paya (AI)** | Chat in plain words ("swap half my NEAR to USDC", "send 2 USDC to my Solana wallet"). The assistant reads balances and live prices and proposes the action as a confirmation card; the server re-prices it, and nothing moves until the user confirms (sends and bridges also need the email code). | `/app/ask` | Claude (Anthropic) tool use |
+| **Meme market** | Launch a meme coin in one step (NEAR's official token factory creates a NEP-141 token at `<ticker>.tkn.primitives.near`, then a Ref Finance pool is created and seeded with the creator's liquidity) and buy/sell every coin launched on Paya, with price, minimum and price impact shown first. Launching and trading switch on after the final funded mainnet test (`MEMES_LIVE`); browsing and cost previews are live now. | `/app/market` | `tkn.primitives.near` + Ref Finance (`v2.ref-finance.near`) |
 | **Agent API** | Public, non-custodial API for apps and AI agents: holdings, quotes, swaps, bridges, status. Returns transactions for the caller to sign. | [`/docs/agent-api`](https://www.usepaya.xyz/docs/agent-api) | NEAR Intents |
 | **Example trading agent** | ~150-line TypeScript agent: quote, swap, rebalance to a USDC target, bridge. | [`examples/near-trading-agent`](examples/near-trading-agent) | Agent API + near-api-js |
 | **Activity** | Every buy and cash-out with its Support ID and the NEAR and Solana transaction IDs for each hop. | `/app/activity` | — |
-| **Docs, blog, SEO** | 20 docs pages (incl. developer docs), two articles, sitemap, structured data. | [`/docs`](https://www.usepaya.xyz/docs), [`/blog`](https://www.usepaya.xyz/blog) | Next.js |
+| **Docs, blog, SEO** | 21 docs pages (incl. developer docs), two articles, sitemap, structured data. | [`/docs`](https://www.usepaya.xyz/docs), [`/blog`](https://www.usepaya.xyz/blog) | Next.js |
 | **Admin console** | Password-protected support dashboard: accounts, orders with full timelines, audit log. | separate app | Next.js |
 
 Coming soon: **Earn** (staking rewards). Payout countries after Nigeria: Ghana, Kenya, Tanzania, South Africa.
+
+**Status notes (honest):** Ask Paya is deployed and needs Anthropic API credit to answer. Meme launching/trading is deployed behind `MEMES_LIVE` until one funded end-to-end launch on mainnet passes; every read path (market list, live prices from Ref pools, launch cost from the factory's `get_required`, trade quotes from Ref's `get_return`) is verified against mainnet.
 
 ## Try it (do X → see Y)
 
@@ -47,14 +52,16 @@ Coming soon: **Earn** (staking rewards). Payout countries after Nigeria: Ghana, 
 3. **Swap** tab → pick NEAR → USDC, type `0.1` → you see the rate, minimum received and "Route: NEAR Intents" before confirming.
 4. **Bridge** tab → **Receive from another chain** → choose Ethereum · USDC → you get a one-time Ethereum deposit address and the exact amount to send.
 5. **Wallet** (sidebar) → **Connect wallet** → your wallet's tokens and total appear; swap from it and approve in your wallet.
-6. **Ask Paya** (sidebar) → type "What's my balance?" → it answers from your real balances; "Swap 1 NEAR to USDC" → a confirmation card appears.
-7. Developers: `curl "https://paya-render.onrender.com/wallet/quote?account=near&from=near&to=17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1&amount=1"` → a live NEAR → USDC quote.
+6. **Meme market** (sidebar) → **Launch a coin** → fill name and ticker → you see the token address (`<ticker>.tkn.primitives.near`) and the full cost from NEAR's token factory before launching.
+7. **Ask Paya** (sidebar) → type "What's my balance?" → it answers from your real balances; "Swap 1 NEAR to USDC" → a confirmation card appears.
+8. Developers: `curl "https://paya-render.onrender.com/wallet/quote?account=near&from=near&to=17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1&amount=1"` → a live NEAR → USDC quote.
 
 ## How NEAR is used
 
 - **Accounts:** every Paya user gets a NEAR implicit account, so anyone can pay them in NEAR like a bank account number, without the user handling keys.
 - **NEAR Intents (1Click):** all token swaps and cross-chain bridges, for Paya accounts, connected wallets and the public Agent API. Funds are deposited to a one-time 1Click address; outputs and refunds return to the user's own account.
 - **NEAR Connect:** wallet connection (HOT, Meteor, Nightly, MyNEAR Wallet, …).
+- **NEAR token factory (`tkn.primitives.near`) + Ref Finance:** meme coin launches (standard NEP-141 tokens) and their trading pools.
 - **near-api-js:** signing for Paya accounts (relay) and in the example agent.
 
 ## Architecture
@@ -65,6 +72,7 @@ Sell:    NEAR in the user's address ──swap──▶ USDC (Solana) ──PAJ�
 Swap:    token on NEAR ──NEAR Intents──▶ token on NEAR (same account)
 Bridge:  token on NEAR ⇄ NEAR Intents ⇄ token on Solana / Ethereum / Base / Bitcoin / …
 Ask:     user ⇄ Claude (tools: balances, quotes, propose) ⇄ confirmation card ⇄ the endpoints above
+Memes:   tkn.primitives.near create_token ──▶ <ticker>.tkn.primitives.near ──▶ Ref Finance pool (coin/wNEAR) ⇄ buy/sell
 ```
 
 | Part | Path | What it is |
@@ -76,7 +84,7 @@ Ask:     user ⇄ Claude (tools: balances, quotes, propose) ⇄ confirmation car
 | Design | [`design/`](design/) | Brand kit, demo videos (Remotion + HyperFrames), social posts |
 | Contracts | [`contracts/`](contracts/) | An earlier deposit-account design; not used by the live app |
 
-Key relay files: [`tokenswap.ts`](services/relay/src/tokenswap.ts) (swaps, holdings, wallet API), [`bridge.ts`](services/relay/src/bridge.ts) (bridges), [`agent.ts`](services/relay/src/agent.ts) (Ask Paya), [`accounts.ts`](services/relay/src/accounts.ts) (accounts, cash-out, sends), [`buys.ts`](services/relay/src/buys.ts) (buying), [`paj.ts`](services/relay/src/paj.ts) (fiat partner).
+Key relay files: [`tokenswap.ts`](services/relay/src/tokenswap.ts) (swaps, holdings, wallet API), [`bridge.ts`](services/relay/src/bridge.ts) (bridges), [`agent.ts`](services/relay/src/agent.ts) (Ask Paya), [`memes.ts`](services/relay/src/memes.ts) (meme market), [`accounts.ts`](services/relay/src/accounts.ts) (accounts, cash-out, sends), [`buys.ts`](services/relay/src/buys.ts) (buying), [`paj.ts`](services/relay/src/paj.ts) (fiat partner).
 
 ## Security
 
@@ -105,17 +113,17 @@ cd frontend && npm install && npm run dev     # http://localhost:3000 → /app
 | Part | Where | Settings |
 |---|---|---|
 | Frontend | Vercel | Root `frontend`. Env: `NEXT_PUBLIC_RELAY_URL` |
-| Relay | Render / Railway / Fly (always-on) | Root `services/relay`, `Dockerfile`. Env: `PAJ_API_KEY`, `MASTER_SEED`, `LIVE_ORDERS`, `ANTHROPIC_API_KEY`, `CORS_ORIGINS`, `PUBLIC_URL`. Persistent disk at `/data` |
+| Relay | Render / Railway / Fly (always-on) | Root `services/relay`, `Dockerfile`. Env: `PAJ_API_KEY`, `MASTER_SEED`, `LIVE_ORDERS`, `ANTHROPIC_API_KEY`, `MEMES_LIVE`, `CORS_ORIGINS`, `PUBLIC_URL`. Persistent disk at `/data` |
 
 ## Hackathon disclosure
 
 - All code in this repository was written during NEAR HACKATHON; the first commit is dated 2026-11-10. There is no pre-hackathon code.
 - AI coding assistance (Claude Code) was used throughout.
-- Third-party services and libraries: NEAR Intents 1Click API, NEAR Connect (`@hot-labs/near-connect`), `near-api-js`, PAJ (fiat on/off-ramp, Nigeria), Rubic (NEAR ⇄ USDC route for buys and cash-outs), Solana `@solana/web3.js` + `@solana/spl-token`, Helius RPC, Anthropic Claude (`@anthropic-ai/sdk`), ElevenLabs (video voiceovers), Next.js, Hono, Tailwind, Remotion, HyperFrames.
+- Third-party services and libraries: NEAR Intents 1Click API, NEAR Connect (`@hot-labs/near-connect`), `near-api-js`, PAJ (fiat on/off-ramp, Nigeria), Rubic (NEAR ⇄ USDC route for buys and cash-outs), Solana `@solana/web3.js` + `@solana/spl-token`, Helius RPC, Anthropic Claude (`@anthropic-ai/sdk`), NEAR token factory (`tkn.primitives.near`), Ref Finance, ElevenLabs (video voiceovers), Next.js, Hono, Tailwind, Remotion, HyperFrames.
 
 ## Demo videos
 
-In [`design/hyper/out/`](design/hyper/out/): `paya-buy.mp4`, `paya-sell.mp4`, `paya-swap.mp4`, `paya-bridge.mp4`, plus the Ask Paya and Agent API videos.
+In [`design/hyper/out/`](design/hyper/out/): `paya-buy.mp4`, `paya-sell.mp4`, `paya-swap.mp4`, `paya-bridge.mp4`, `paya-ask.mp4` (Ask Paya), `paya-agent.mp4` (Agent API) and `paya-market.mp4` (meme market).
 
 ## Links
 

@@ -12,7 +12,7 @@ const r2 = (n) => Math.round(n * 100) / 100;
 const NEAR_SVG = `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 3.9 14 9.2c-.2.4.2.8.6.5L18.2 6.6c.1-.1.3 0 .3.1v9.6c0 .2-.2.2-.3.1L7.4 3.5C7 3 6.5 2.7 5.9 2.7h-.4C4.7 2.7 4 3.4 4 4.3v15.4c0 .9.7 1.6 1.5 1.6.6 0 1.1-.3 1.4-.8L10.5 15c.2-.4-.2-.8-.6-.5l-3.6 3.1c-.1.1-.3 0-.3-.1V7.9c0-.2.2-.2.3-.1l10.8 12.9c.3.4.9.6 1.4.6h.4c.9 0 1.5-.7 1.5-1.6V4.3c0-.9-.7-1.6-1.5-1.6-.6 0-1.1.3-1.3.8z"/></svg>`;
 const MARK = (c) => `<svg viewBox="0 0 100 100"><circle cx="32" cy="50" r="30" fill="${c}"/><path d="M68 20a30 30 0 0 1 0 60z" fill="${c}"/></svg>`;
 
-const GLYPH = { buy: "₦", sell: "₦", swap: "$", bridge: "◎", ask: "✦", agent: "{}" };
+const GLYPH = { buy: "₦", sell: "₦", swap: "$", bridge: "◎", ask: "✦", agent: "{}", market: "🚀" };
 
 function cardHtml(kind) {
   const k = (t) => `<span class="ck">${t}</span>`, st = (t) => `<span class="cs">${t}</span>`, cm = (t) => `<span class="cc">${t}</span>`;

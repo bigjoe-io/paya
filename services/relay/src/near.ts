@@ -192,6 +192,31 @@ export async function ensureRegistered(i: number, contract: string) {
   return r.transaction.hash as string;
 }
 
+/** Sign and send a list of function-call transactions (same shape the wallet API returns), in order. */
+export async function sendTxs(
+  i: number,
+  txs: { receiverId: string; actions: { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }[] }[],
+) {
+  const hashes: string[] = [];
+  const results: unknown[] = [];
+  for (const tx of txs) {
+    const r = await accountFor(i).signAndSendTransaction({
+      receiverId: tx.receiverId,
+      actions: tx.actions.map((a) => actions.functionCall(a.params.methodName, a.params.args as Record<string, unknown>, BigInt(a.params.gas), BigInt(a.params.deposit))),
+      waitUntil: "FINAL",
+    });
+    const failure = JSON.stringify((r as { status?: unknown }).status ?? {}).includes("Failure");
+    if (failure) throw new Error(`Transaction to ${tx.receiverId} failed (${r.transaction.hash})`);
+    hashes.push(r.transaction.hash as string);
+    results.push(r);
+  }
+  return hashes;
+}
+
+export async function viewCall<T>(contractId: string, method: string, args: Record<string, unknown>) {
+  return view<T>(contractId, method, args);
+}
+
 /** Turn wNEAR back into native NEAR. */
 export async function unwrap(i: number, amount: bigint) {
   const r = await accountFor(i).signAndSendTransaction({

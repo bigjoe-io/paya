@@ -3,7 +3,7 @@ import crypto from "node:crypto";
 import { Hono } from "hono";
 import { readAudit } from "./audit.js";
 import { DATA_DIR, isMount, config } from "./config.js";
-import { accessCodes, buys, swaps, users, waitlist, type Buy, type Swap, type User } from "./db.js";
+import { accessCodes, buys, memes, swaps, users, waitlist, type Buy, type Meme, type Swap, type User } from "./db.js";
 import { accessEnabled, createCode } from "./access.js";
 import { balances, toNear } from "./near.js";
 import { pajV2 } from "./paj.js";
@@ -250,7 +250,7 @@ admin.get("/users/:id", async (c) => {
  * has accounts of its own, so it can't be used to inject data later.
  */
 admin.post("/import", async (c) => {
-  const body = (await c.req.json().catch(() => null)) as { users?: User[]; swaps?: Swap[]; buys?: Buy[] } | null;
+  const body = (await c.req.json().catch(() => null)) as { users?: User[]; swaps?: Swap[]; buys?: Buy[]; memes?: Meme[] } | null;
   if (!body) return c.json({ error: "Expected JSON" }, 400);
   const incomingEmails = new Set((body.users ?? []).map((u) => u.email));
   const foreign = users.all().filter((u) => !incomingEmails.has(u.email));
@@ -273,11 +273,14 @@ admin.post("/import", async (c) => {
     users: users.importRows(fresh),
     swaps: swaps.importRows(body.swaps ?? []),
     buys: buys.importRows(body.buys ?? []),
+    memes: memes.importRows(body.memes ?? []),
   };
   return c.json({ imported: result, repointed, totals: { users: users.all().length, swaps: swaps.all().length, buys: buys.all().length } });
 });
 
 /* ---------- waitlist + tester access ---------- */
+
+admin.get("/memes", (c) => c.json(memes.all()));
 
 admin.get("/waitlist", (c) => c.json(waitlist.all().map(({ events: _e, ...w }) => w)));
 

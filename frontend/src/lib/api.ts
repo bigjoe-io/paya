@@ -211,6 +211,14 @@ export type Proposal =
   | { id: string; kind: "cashout"; near: number; fiatOut: number; currency: string; bank: string }
   | { id: string; kind: "bridge_out"; from: string; fromSymbol: string; toAsset: string; toSymbol: string; chain: string; amount: number; recipient: string; amountOut: number }
   | { id: string; kind: "send_near"; to: string; near: number };
+export type MarketCoin = {
+  id: string; name: string; symbol: string; icon: string | null; description: string; creator: string;
+  poolId: number | null; status: "creating" | "live" | "failed"; createdAt: string;
+  priceNear: number | null; priceUsd: number | null; liquidityUsd: number | null; marketCapUsd: number | null;
+};
+export type LaunchInput = { name: string; symbol: string; description?: string; icon?: string | null; supply: number; liquidityNear: number; liquidityPercent: number };
+export type LaunchCost = { tokenId: string; available: boolean; factoryNear: number; feesNear: number; liquidityNear: number; totalNear: number; requiredBalanceNear: number };
+export type TradeQuote = { side: "buy" | "sell"; amountIn: number; amountOut: number; minOut: number; priceImpact: number | null };
 export type TokenSwapStatus = { status: "processing" | "done" | "refunded" | "failed"; raw: string };
 
 const qs = (o: Record<string, string | number>) =>
@@ -287,6 +295,13 @@ export const api = {
 
   ask: (messages: { role: "user" | "assistant"; text: string }[]) =>
     request<{ reply: string; proposals: Proposal[] }>("/me/ask", { method: "POST", body: JSON.stringify({ messages }) }),
+  memes: () => request<{ live: boolean; coins: MarketCoin[] }>("/memes"),
+  memeCost: (b: LaunchInput) => request<LaunchCost>("/memes/cost", { method: "POST", body: JSON.stringify(b) }),
+  launchMeme: (b: LaunchInput) => request<MarketCoin>("/me/memes/launch", { method: "POST", body: JSON.stringify(b) }),
+  memeQuote: (id: string, side: "buy" | "sell", amount: number) =>
+    request<TradeQuote>(`/memes/${encodeURIComponent(id)}/quote?side=${side}&amount=${amount}`),
+  tradeMeme: (id: string, side: "buy" | "sell", amount: number) =>
+    request<TradeQuote & { txHash: string }>(`/me/memes/${encodeURIComponent(id)}/trade`, { method: "POST", body: JSON.stringify({ side, amount }) }),
   bridgeChains: () => request<BridgeChain[]>("/bridge/chains"),
   bridgeOutQuote: (b: { from: string; toAsset: string; amount: number; recipient: string }, account?: string) =>
     request<BridgeQuote>(`${account ? "/wallet" : "/me"}/bridge/out/quote?${qs({ ...b, ...(account ? { account } : {}) })}`),

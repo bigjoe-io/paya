@@ -100,6 +100,7 @@ const schema = z.object({
   USERS_PATH: z.string().default(`${DATA_DIR}/paya-users.json`),
   ACCESS_PATH: z.string().default(`${DATA_DIR}/paya-access.json`),
   WAITLIST_PATH: z.string().default(`${DATA_DIR}/paya-waitlist.json`),
+  MEMES_PATH: z.string().default(`${DATA_DIR}/paya-memes.json`),
   /**
    * Private testing: when set, the app's API only answers people who unlocked
    * it with a tester access code. Same value as the website's ACCESS_SECRET.
