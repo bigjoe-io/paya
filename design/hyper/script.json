@@ -1,0 +1,297 @@
+{
+  "buy": {
+    "title": [
+      "BUY",
+      "NEAR"
+    ],
+    "rail": [
+      "Enter an amount",
+      "See your NEAR",
+      "Bank transfer",
+      "NEAR lands"
+    ],
+    "steps": [
+      {
+        "vo": "Buying NEAR with Paya takes four simple steps."
+      },
+      {
+        "shot": "buy-start",
+        "focus": [
+          0.5,
+          0.42
+        ],
+        "caption": "Enter an amount in your currency",
+        "vo": "Enter how much you want to spend, in your own currency."
+      },
+      {
+        "shot": "buy-quote",
+        "focus": [
+          0.5,
+          0.55
+        ],
+        "caption": "See exactly what you get",
+        "vo": "See exactly how much NEAR you'll get, before you pay."
+      },
+      {
+        "shot": "buy-order",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Send a normal bank transfer",
+        "vo": "Then send a normal bank transfer."
+      },
+      {
+        "shot": "buy-wait",
+        "focus": [
+          0.5,
+          0.35
+        ],
+        "caption": "NEAR lands in your balance",
+        "vo": "And your NEAR lands in your Paya balance."
+      }
+    ]
+  },
+  "sell": {
+    "title": [
+      "SELL",
+      "NEAR"
+    ],
+    "rail": [
+      "Choose an amount",
+      "See your cash",
+      "Paid to your bank",
+      "Auto cash-out"
+    ],
+    "steps": [
+      {
+        "vo": "Cashing out NEAR to your bank is just as simple."
+      },
+      {
+        "shot": "sell-start",
+        "focus": [
+          0.5,
+          0.62
+        ],
+        "caption": "Choose an amount, or tap Max",
+        "vo": "Choose an amount, or tap Max."
+      },
+      {
+        "shot": "sell-max",
+        "focus": [
+          0.5,
+          0.75
+        ],
+        "caption": "See the cash you'll receive",
+        "vo": "See exactly how much cash you'll receive, and every fee."
+      },
+      {
+        "shot": "sell-paid",
+        "focus": [
+          0.5,
+          0.4
+        ],
+        "caption": "Paid straight to your bank",
+        "vo": "Paya pays it straight to your linked bank account."
+      },
+      {
+        "shot": "sell-start",
+        "focus": [
+          0.5,
+          0.5
+        ],
+        "caption": "Or cash out automatically",
+        "vo": "Or turn on auto cash-out, and every payment lands in your bank."
+      }
+    ]
+  },
+  "swap": {
+    "title": [
+      "SWAP",
+      "ANY TOKEN"
+    ],
+    "rail": [
+      "Pick your tokens",
+      "See the rate",
+      "Swapped",
+      "Or use your wallet"
+    ],
+    "steps": [
+      {
+        "vo": "Swap any token on NEAR, right inside Paya."
+      },
+      {
+        "shot": "picker",
+        "focus": [
+          0.5,
+          0.45
+        ],
+        "caption": "Pick what you have and what you want",
+        "vo": "Pick what you have, and what you want. Like NEAR to USDC."
+      },
+      {
+        "shot": "swap",
+        "focus": [
+          0.5,
+          0.75
+        ],
+        "caption": "See the rate and the minimum",
+        "vo": "See the rate, and the minimum you'll get."
+      },
+      {
+        "card": "swapped",
+        "caption": "Done in seconds",
+        "vo": "Tap swap. NEAR Intents finds the price, and it lands in seconds."
+      },
+      {
+        "shot": "wallet",
+        "focus": [
+          0.5,
+          0.4
+        ],
+        "caption": "Or connect your own wallet",
+        "vo": "Prefer your own wallet? Connect it, and swap from there."
+      }
+    ]
+  },
+  "bridge": {
+    "title": [
+      "BRIDGE",
+      "ANY CHAIN"
+    ],
+    "rail": [
+      "Send out",
+      "Receive in",
+      "Ten chains",
+      "Ready to use"
+    ],
+    "steps": [
+      {
+        "vo": "Move money between NEAR and other chains."
+      },
+      {
+        "shot": "bridge",
+        "focus": [
+          0.5,
+          0.8
+        ],
+        "caption": "Send USDC to a Solana wallet",
+        "vo": "Send USDC to a Solana wallet, in one step."
+      },
+      {
+        "shot": "bridge-in-deposit",
+        "focus": [
+          0.5,
+          0.62
+        ],
+        "caption": "Receive with a one-time address",
+        "vo": "Or receive from Ethereum. Paya gives you a one-time deposit address."
+      },
+      {
+        "card": "chains",
+        "caption": "Solana, Ethereum, Base, Bitcoin and more",
+        "vo": "Solana, Ethereum, Base, Bitcoin, and more."
+      },
+      {
+        "card": "arrived",
+        "caption": "Ready to swap, send or cash out",
+        "vo": "It arrives in your balance, ready to swap, send, or cash out."
+      }
+    ]
+  },
+  "outro": "Paya. Buy, sell, swap and bridge. At use paya dot x y z.",
+  "ask": {
+    "title": [
+      "ASK",
+      "PAYA"
+    ],
+    "rail": [
+      "Just ask",
+      "It checks for you",
+      "You confirm",
+      "Done"
+    ],
+    "steps": [
+      {
+        "vo": "Meet Ask Paya. Just tell it what you want to do with your money."
+      },
+      {
+        "shot": "ask-card",
+        "focus": [
+          0.5,
+          0.12
+        ],
+        "caption": "Ask in plain words",
+        "vo": "Ask in plain words. Like, swap half my NEAR to USDC."
+      },
+      {
+        "shot": "ask-card",
+        "focus": [
+          0.5,
+          0.2
+        ],
+        "caption": "It checks your balance and the price",
+        "vo": "It checks your real balance and the live price, then prepares the swap."
+      },
+      {
+        "shot": "ask-card",
+        "focus": [
+          0.5,
+          0.25
+        ],
+        "caption": "Nothing moves until you confirm",
+        "vo": "Nothing moves until you tap confirm. Sends and bridges also need your email code."
+      },
+      {
+        "shot": "ask-done",
+        "focus": [
+          0.5,
+          0.25
+        ],
+        "caption": "Done in seconds",
+        "vo": "And it's done, in seconds."
+      }
+    ]
+  },
+  "agent": {
+    "title": [
+      "BUILD",
+      "NEAR AGENTS"
+    ],
+    "rail": [
+      "Live prices",
+      "You sign",
+      "Trade & bridge",
+      "Ship it"
+    ],
+    "steps": [
+      {
+        "vo": "Building a NEAR trading agent? Paya's Agent API does the hard part."
+      },
+      {
+        "card": "code-quote",
+        "caption": "Live prices for any NEAR token",
+        "vo": "Get live prices for NEAR, USDC, and two dozen tokens, with one call."
+      },
+      {
+        "card": "code-swap",
+        "caption": "Paya builds it, your agent signs",
+        "vo": "Ask for a swap or a bridge. Paya returns the transactions, and your agent signs them. Your keys never leave."
+      },
+      {
+        "card": "terminal",
+        "caption": "Swap, rebalance, bridge to ten chains",
+        "vo": "Swap, rebalance, or bridge to ten chains, all through NEAR Intents."
+      },
+      {
+        "shot": "docs-agent",
+        "focus": [
+          0.5,
+          0.3
+        ],
+        "caption": "Docs and an example agent included",
+        "vo": "Docs and a ready-made example agent are in the repo. Start building today."
+      }
+    ]
+  }
+}

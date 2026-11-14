@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=1920, height=1080" />
+    <script src="https://cdn.jsdelivr.net/npm/gsap@3.15.0/dist/gsap.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,700;14..32,800;14..32,900&display=swap" rel="stylesheet" />
+    <style>
+      :root { --ink:#0d0d0f; --ground:#f3f3f4; --muted:#8a8a90; }
+      * { margin:0; padding:0; box-sizing:border-box; }
+      html, body { width:1920px; height:1080px; overflow:hidden; background:#000; font-family:Inter, sans-serif; }
+      #root { position:relative; width:1920px; height:1080px; overflow:hidden; }
+      .clip { position:absolute; inset:0; }
+      #flash { position:absolute; inset:0; background:#fff; opacity:0; pointer-events:none; z-index:50; }
+      /* reveal: faint ghost, then solid sweeps across */
+      .ghost, .solid { display:block; white-space:nowrap; }
+      .solid { position:absolute; inset:0; --p:-20%; -webkit-mask-image:linear-gradient(90deg,#000 calc(var(--p) - 20%),transparent var(--p)); mask-image:linear-gradient(90deg,#000 calc(var(--p) - 20%),transparent var(--p)); }
+      .ghost { opacity:.16; }
+      /* title */
+      #title-scene { background:#000; display:flex; align-items:center; justify-content:center; perspective:1400px; }
+      #title { text-align:center; color:#fff; font-weight:900; font-size:230px; line-height:.86; letter-spacing:-10px; position:relative; z-index:2; }
+      .tword { display:block; }
+      .tword.l2 { color:#b9b9be; font-size:150px; letter-spacing:-6px; margin-top:14px; }
+      #coinwrap { position:absolute; right:250px; top:150px; perspective:900px; z-index:1; }
+      #coin { width:260px; height:260px; border-radius:50%; background:radial-gradient(circle at 32% 26%, #8a8a8a 0%, #2a2a2a 42%, #050505 100%); box-shadow:0 50px 90px rgba(0,0,0,.6), inset 0 -14px 30px rgba(0,0,0,.5), inset 0 14px 26px rgba(255,255,255,.35); display:grid; place-items:center; color:#f2f2f2; transform-style:preserve-3d; }
+      #coin svg { width:46%; height:46%; }
+      .float { position:absolute; border-radius:50%; display:grid; place-items:center; font-weight:800; color:#2b2b2b; background:radial-gradient(circle at 32% 26%, #fff 0%, #d7d7d7 45%, #8d8d8d 100%); box-shadow:0 30px 60px rgba(0,0,0,.45), inset 0 -8px 18px rgba(0,0,0,.25); }
+      .float.dark { background:radial-gradient(circle at 32% 26%, #6a6a6a 0%, #222 45%, #050505 100%); color:#eee; }
+      /* steps */
+      #steps-scene { background:#fff; }
+      #brand { position:absolute; left:110px; top:80px; display:flex; align-items:center; gap:14px; font-weight:800; font-size:38px; letter-spacing:-1.2px; color:var(--ink); }
+      #brand svg { width:46px; height:46px; }
+      #num { position:absolute; left:110px; top:250px; font-weight:800; font-size:30px; color:var(--muted); letter-spacing:2px; }
+      #rail { position:absolute; left:110px; top:300px; width:880px; height:460px; overflow:hidden; -webkit-mask-image:linear-gradient(180deg,transparent 0,#000 18%,#000 62%,transparent 100%); mask-image:linear-gradient(180deg,transparent 0,#000 18%,#000 62%,transparent 100%); }
+      #rail-track { position:absolute; left:0; top:90px; }
+      .rail-item { position:relative; height:118px; font-weight:800; font-size:96px; letter-spacing:-4px; color:var(--ink); line-height:118px; }
+      .rail-item .ghost { opacity:.13; }
+      .cap { position:absolute; left:112px; top:800px; right:auto; bottom:auto; width:900px; height:60px; font-size:40px; font-weight:500; color:#56565c; letter-spacing:-.8px; opacity:0; }
+      .cap .solid { color:#2b2b30; }
+      #stage { position:absolute; right:150px; top:90px; width:600px; height:900px; perspective:1600px; }
+      #device { position:absolute; inset:0; border-radius:56px; background:#0b0b0c; padding:14px; box-shadow:0 70px 120px rgba(0,0,0,.28), 0 0 0 2px rgba(255,255,255,.6) inset; transform-style:preserve-3d; }
+      #screen { position:relative; width:100%; height:100%; border-radius:44px; overflow:hidden; background:#fafafa; transform-style:preserve-3d; }
+      .shot { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; object-position:50% 0; opacity:0; }
+      .fakewrap { display:grid; place-items:center; background:#fafafa; }
+      .fake { width:84%; text-align:center; font-family:Inter; }
+      .fake .tick { width:110px; height:110px; margin:0 auto; border-radius:50%; background:#0d0d0f; color:#fff; font-size:64px; line-height:110px; font-weight:700; }
+      .fake h3 { margin-top:34px; font-size:48px; letter-spacing:-1.5px; }
+      .fake p { margin-top:12px; font-size:26px; color:#6b6b72; }
+      .fake .row { margin-top:44px; display:flex; align-items:center; justify-content:center; gap:26px; }
+      .tok { width:110px; height:110px; border-radius:50%; display:grid; place-items:center; font-size:54px; font-weight:800; color:#fff; box-shadow:0 20px 40px rgba(0,0,0,.25); }
+      .tok.d { background:radial-gradient(circle at 32% 26%, #777, #1b1b1b 50%, #000); } .tok.d svg { width:50%; height:50%; }
+      .tok.u { background:radial-gradient(circle at 32% 26%, #9cc3ff, #2775ca 50%, #0e3c7a); }
+      .arrow { font-size:54px; color:#9a9aa0; }
+      .fake .btn { margin:46px auto 0; width:100%; padding:26px 0; border-radius:26px; background:#0d0d0f; color:#fff; font-size:28px; font-weight:600; }
+      .chains { display:flex; flex-wrap:wrap; gap:16px; justify-content:center; }
+      .chip { padding:16px 26px; border-radius:999px; background:#0d0d0f; color:#fff; font-size:28px; font-weight:600; }
+      /* outro */
+      #outro { background:#000; display:flex; align-items:center; justify-content:center; perspective:1200px; }
+      #owords { display:flex; gap:40px; color:#fff; font-weight:900; font-size:150px; letter-spacing:-6px; }
+      .oword { display:inline-block; } .oword:nth-child(even) { color:#9d9da3; }
+      #stackwrap { position:absolute; left:50%; top:200px; margin-left:-150px; width:300px; height:300px; perspective:900px; }
+      #stack { position:relative; width:300px; height:300px; transform-style:preserve-3d; }
+      .disc { position:absolute; left:0; width:300px; height:300px; border-radius:50%; box-shadow:0 18px 0 rgba(0,0,0,.35); }
+      #endlogo { position:absolute; left:0; right:0; top:560px; display:flex; justify-content:center; align-items:center; gap:24px; color:#fff; font-weight:800; font-size:110px; letter-spacing:-4px; }
+      #endlogo svg { width:110px; height:110px; }
+      #endline { position:absolute; left:0; right:0; top:720px; display:flex; justify-content:center; }
+      #endline > div { position:relative; color:#d4d4d8; font-size:46px; font-weight:500; letter-spacing:-1px; }
+      #endurl { position:absolute; left:0; right:0; top:810px; text-align:center; color:#8f8f95; font-size:34px; font-weight:500; }
+    </style>
+  </head>
+  <body>
+    <div id="root" data-composition-id="paya-bridge" data-start="0" data-duration="34.73" data-width="1920" data-height="1080">
+      <video class="clip" id="intro" src="assets/intro.mp4" data-start="0" data-duration="4.6" data-has-audio="true" data-volume="1" style="width:1920px;height:1080px;object-fit:cover"></video>
+      <audio class="clip" id="music" src="assets/music.mp3" data-start="4.3999999999999995" data-duration="30.33" data-volume="0.16" data-fade-in="0.8" data-fade-out="1.6"></audio>
+      <audio class="clip" id="vo0" src="assets/vo/bridge-0.mp3" data-start="4.85" data-duration="2.82" data-volume="1"></audio>
+      <audio class="clip" id="vo1" src="assets/vo/bridge-1.mp3" data-start="8.57" data-duration="3.04" data-volume="1"></audio>
+      <audio class="clip" id="vo2" src="assets/vo/bridge-2.mp3" data-start="12.51" data-duration="4.4" data-volume="1"></audio>
+      <audio class="clip" id="vo3" src="assets/vo/bridge-3.mp3" data-start="17.81" data-duration="3.24" data-volume="1"></audio>
+      <audio class="clip" id="vo4" src="assets/vo/bridge-4.mp3" data-start="21.95" data-duration="3.53" data-volume="1"></audio>
+
+      <div class="clip" id="title-scene" data-start="4.6" data-duration="3.72">
+        <div class="float dark" style="left:170px;top:170px;width:130px;height:130px;font-size:56px">◎</div>
+        <div class="float" style="left:300px;top:760px;width:100px;height:100px;font-size:44px">$</div>
+        <div class="float dark" style="left:1490px;top:740px;width:150px;height:150px"><span style="width:46%;height:46%;display:grid;color:#eee"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 3.9 14 9.2c-.2.4.2.8.6.5L18.2 6.6c.1-.1.3 0 .3.1v9.6c0 .2-.2.2-.3.1L7.4 3.5C7 3 6.5 2.7 5.9 2.7h-.4C4.7 2.7 4 3.4 4 4.3v15.4c0 .9.7 1.6 1.5 1.6.6 0 1.1-.3 1.4-.8L10.5 15c.2-.4-.2-.8-.6-.5l-3.6 3.1c-.1.1-.3 0-.3-.1V7.9c0-.2.2-.2.3-.1l10.8 12.9c.3.4.9.6 1.4.6h.4c.9 0 1.5-.7 1.5-1.6V4.3c0-.9-.7-1.6-1.5-1.6-.6 0-1.1.3-1.3.8z"/></svg></span></div>
+        <div class="float" style="left:1640px;top:520px;width:80px;height:80px;font-size:34px">₦</div>
+        <div id="coinwrap"><div id="coin"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 3.9 14 9.2c-.2.4.2.8.6.5L18.2 6.6c.1-.1.3 0 .3.1v9.6c0 .2-.2.2-.3.1L7.4 3.5C7 3 6.5 2.7 5.9 2.7h-.4C4.7 2.7 4 3.4 4 4.3v15.4c0 .9.7 1.6 1.5 1.6.6 0 1.1-.3 1.4-.8L10.5 15c.2-.4-.2-.8-.6-.5l-3.6 3.1c-.1.1-.3 0-.3-.1V7.9c0-.2.2-.2.3-.1l10.8 12.9c.3.4.9.6 1.4.6h.4c.9 0 1.5-.7 1.5-1.6V4.3c0-.9-.7-1.6-1.5-1.6-.6 0-1.1.3-1.3.8z"/></svg></div></div>
+        <div id="title"><span class="tword">BRIDGE</span><span class="tword l2">ANY CHAIN</span></div>
+      </div>
+
+      <div class="clip" id="steps-scene" data-start="8.32" data-duration="17.81">
+        <div id="brand"><svg viewBox="0 0 100 100"><circle cx="32" cy="50" r="30" fill="#0d0d0f"/><path d="M68 20a30 30 0 0 1 0 60z" fill="#0d0d0f"/></svg>Paya</div>
+        <div id="num">STEP 1 OF 4</div>
+        <div id="rail"><div id="rail-track"><div class="rail-item" id="rail0"><span class="ghost">Send out</span><span class="solid">Send out</span></div><div class="rail-item" id="rail1"><span class="ghost">Receive in</span><span class="solid">Receive in</span></div><div class="rail-item" id="rail2"><span class="ghost">Ten chains</span><span class="solid">Ten chains</span></div><div class="rail-item" id="rail3"><span class="ghost">Ready to use</span><span class="solid">Ready to use</span></div></div></div>
+        <div id="stage"><div id="device"><div id="screen">
+            <img class="shot" id="shot0" src="assets/shots/bridge.jpg" style="transform-origin:50% 80%" />
+            <img class="shot" id="shot1" src="assets/shots/bridge-in-deposit.jpg" style="transform-origin:50% 62%" />
+            <div class="shot fakewrap" id="shot2"><div class="fake chains"><span class="chip" style="--i:0">Solana</span><span class="chip" style="--i:1">Ethereum</span><span class="chip" style="--i:2">Base</span><span class="chip" style="--i:3">Arbitrum</span><span class="chip" style="--i:4">Optimism</span><span class="chip" style="--i:5">BNB Chain</span><span class="chip" style="--i:6">Polygon</span><span class="chip" style="--i:7">Avalanche</span><span class="chip" style="--i:8">Bitcoin</span><span class="chip" style="--i:9">Tron</span></div></div>
+            <div class="shot fakewrap" id="shot3"><div class="fake"><div class="tick">✓</div><h3>Bridge complete</h3><p>14.12 NEAR arrived from Ethereum.</p><div class="row"><span class="tok u">$</span><span class="arrow">→</span><span class="tok d"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M17.6 3.9 14 9.2c-.2.4.2.8.6.5L18.2 6.6c.1-.1.3 0 .3.1v9.6c0 .2-.2.2-.3.1L7.4 3.5C7 3 6.5 2.7 5.9 2.7h-.4C4.7 2.7 4 3.4 4 4.3v15.4c0 .9.7 1.6 1.5 1.6.6 0 1.1-.3 1.4-.8L10.5 15c.2-.4-.2-.8-.6-.5l-3.6 3.1c-.1.1-.3 0-.3-.1V7.9c0-.2.2-.2.3-.1l10.8 12.9c.3.4.9.6 1.4.6h.4c.9 0 1.5-.7 1.5-1.6V4.3c0-.9-.7-1.6-1.5-1.6-.6 0-1.1.3-1.3.8z"/></svg></span></div><div class="btn">Done</div></div></div>
+        </div></div></div>
+        <div class="cap" id="cap0"><span class="ghost">Send USDC to a Solana wallet</span><span class="solid">Send USDC to a Solana wallet</span></div>
+        <div class="cap" id="cap1"><span class="ghost">Receive with a one-time address</span><span class="solid">Receive with a one-time address</span></div>
+        <div class="cap" id="cap2"><span class="ghost">Solana, Ethereum, Base, Bitcoin and more</span><span class="solid">Solana, Ethereum, Base, Bitcoin and more</span></div>
+        <div class="cap" id="cap3"><span class="ghost">Ready to swap, send or cash out</span><span class="solid">Ready to swap, send or cash out</span></div>
+      </div>
+
+      <div class="clip" id="outro" data-start="26.13" data-duration="8.6">
+        <div id="owords"><span class="oword">BUY</span><span class="oword">SELL</span><span class="oword">SWAP</span><span class="oword">BRIDGE</span></div>
+        <div id="stackwrap"><div id="stack">
+          <div class="disc" style="top:90px;background:#3a3a3e"></div>
+          <div class="disc" style="top:60px;background:#7a7a80"></div>
+          <div class="disc" style="top:30px;background:#c9c9cd"></div>
+          <div class="disc" style="top:0;background:#fff;display:grid;place-items:center"><div style="width:44%;height:44%"><svg viewBox="0 0 100 100"><circle cx="32" cy="50" r="30" fill="#0d0d0f"/><path d="M68 20a30 30 0 0 1 0 60z" fill="#0d0d0f"/></svg></div></div>
+        </div></div>
+        <div id="endlogo"><svg viewBox="0 0 100 100"><circle cx="32" cy="50" r="30" fill="#fff"/><path d="M68 20a30 30 0 0 1 0 60z" fill="#fff"/></svg>Paya</div>
+        <div id="endline"><div><span class="ghost">NEAR to your bank. And back.</span><span class="solid">NEAR to your bank. And back.</span></div></div>
+        <div id="endurl">usepaya.xyz · @usepaya</div>
+      </div>
+      <audio class="clip" id="vo-outro" src="assets/vo/outro.mp3" data-start="28.53" data-duration="6" data-volume="1"></audio>
+
+      <div id="flash"></div>
+    </div>
+    <script>
+      window.__timelines = window.__timelines || {};
+      const tl = gsap.timeline({ paused: true });
+      tl.fromTo("#flash", {opacity:1}, {opacity:0, duration:0.35, ease:"power2.out", immediateRender:false}, 4.6);
+      tl.fromTo(".tword", {opacity:0, scale:1.5, filter:"blur(18px)", y:40}, {opacity:1, scale:1, filter:"blur(0px)", y:0, duration:0.55, ease:"power4.out", stagger:0.18}, 4.7);
+      tl.fromTo("#coin", {rotationY:-540, scale:0.3, opacity:0}, {rotationY:0, scale:1, opacity:1, duration:1.4, ease:"power3.out"}, 4.8);
+      tl.to("#coin", {rotationY:360, duration:2.32, ease:"none"}, 6.2);
+      tl.fromTo(".float", {opacity:0, y:120, rotation:-25}, {opacity:1, y:0, rotation:0, duration:0.9, ease:"back.out(1.6)", stagger:0.08}, 4.9);
+      tl.fromTo(".float", {y:0}, {y:-40, duration:2.52, ease:"none", immediateRender:false}, 5.8);
+      tl.to("#title-scene", {rotationX:85, scale:0.7, opacity:0, duration:0.45, ease:"power3.in"}, 7.87);
+      tl.fromTo("#flash", {opacity:0.9}, {opacity:0, duration:0.3, immediateRender:false}, 8.32);
+      tl.fromTo("#device", {rotationY:-75, rotationX:18, scale:0.6, opacity:0, x:300}, {rotationY:-12, rotationX:4, scale:1, opacity:1, x:0, duration:1.0, ease:"power4.out"}, 8.32);
+      tl.to("#device", {rotationY:8, rotationX:-2, duration:16.81, ease:"sine.inOut"}, 9.32);
+      tl.fromTo("#rail", {opacity:0, x:-80}, {opacity:1, x:0, duration:0.7, ease:"power3.out"}, 8.42);
+      tl.set("#shot0", {opacity:1}, 8.32);
+      tl.fromTo("#shot0", {scale:1}, {scale:1.32, duration:3.94, ease:"sine.inOut"}, 8.52);
+      tl.to("#rail-track", {y:0, duration:0.55, ease:"power3.inOut"}, 8.32);
+      tl.fromTo("#rail0 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.8, ease:"power2.out"}, 8.52);
+      tl.set("#num", {textContent:"STEP 1 OF 4"}, 8.32);
+      tl.set("#cap0", {opacity:1}, 8.32);
+      tl.fromTo("#cap0 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.9, ease:"power2.out"}, 8.67);
+      tl.fromTo("#cap0 .ghost", {opacity:0}, {opacity:0.18, duration:0.3}, 8.42);
+      tl.to("#cap0", {opacity:0, duration:0.2}, 12.06);
+      tl.to("#screen", {rotationY:90, duration:0.18, ease:"power2.in"}, 12.08);
+      tl.set("#shot0", {opacity:0}, 12.26);
+      tl.fromTo("#screen", {rotationY:-90}, {rotationY:0, duration:0.32, ease:"back.out(1.4)", immediateRender:false}, 12.26);
+      tl.fromTo("#flash", {opacity:0.55}, {opacity:0, duration:0.25, immediateRender:false}, 12.26);
+      tl.set("#shot1", {opacity:1}, 12.26);
+      tl.fromTo("#shot1", {scale:1}, {scale:1.32, duration:5.3, ease:"sine.inOut"}, 12.46);
+      tl.to("#rail-track", {y:-118, duration:0.55, ease:"power3.inOut"}, 12.01);
+      tl.fromTo("#rail1 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.8, ease:"power2.out"}, 12.46);
+      tl.to("#rail0 .solid", {opacity:0.0, duration:0.3}, 12.26);
+      tl.set("#num", {textContent:"STEP 2 OF 4"}, 12.26);
+      tl.set("#cap1", {opacity:1}, 12.26);
+      tl.fromTo("#cap1 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.9, ease:"power2.out"}, 12.61);
+      tl.fromTo("#cap1 .ghost", {opacity:0}, {opacity:0.18, duration:0.3}, 12.36);
+      tl.to("#cap1", {opacity:0, duration:0.2}, 17.36);
+      tl.to("#screen", {rotationY:90, duration:0.18, ease:"power2.in"}, 17.38);
+      tl.set("#shot1", {opacity:0}, 17.56);
+      tl.fromTo("#screen", {rotationY:-90}, {rotationY:0, duration:0.32, ease:"back.out(1.4)", immediateRender:false}, 17.56);
+      tl.fromTo("#flash", {opacity:0.55}, {opacity:0, duration:0.25, immediateRender:false}, 17.56);
+      tl.set("#shot2", {opacity:1}, 17.56);
+      tl.fromTo("#shot2 .fake > *, #shot2 .chip", {opacity:0, y:30, scale:0.8}, {opacity:1, y:0, scale:1, duration:0.5, ease:"back.out(1.8)", stagger:0.06}, 17.71);
+      tl.to("#rail-track", {y:-236, duration:0.55, ease:"power3.inOut"}, 17.31);
+      tl.fromTo("#rail2 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.8, ease:"power2.out"}, 17.76);
+      tl.to("#rail1 .solid", {opacity:0.0, duration:0.3}, 17.56);
+      tl.set("#num", {textContent:"STEP 3 OF 4"}, 17.56);
+      tl.set("#cap2", {opacity:1}, 17.56);
+      tl.fromTo("#cap2 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.9, ease:"power2.out"}, 17.91);
+      tl.fromTo("#cap2 .ghost", {opacity:0}, {opacity:0.18, duration:0.3}, 17.66);
+      tl.to("#cap2", {opacity:0, duration:0.2}, 21.5);
+      tl.to("#screen", {rotationY:90, duration:0.18, ease:"power2.in"}, 21.52);
+      tl.set("#shot2", {opacity:0}, 21.7);
+      tl.fromTo("#screen", {rotationY:-90}, {rotationY:0, duration:0.32, ease:"back.out(1.4)", immediateRender:false}, 21.7);
+      tl.fromTo("#flash", {opacity:0.55}, {opacity:0, duration:0.25, immediateRender:false}, 21.7);
+      tl.set("#shot3", {opacity:1}, 21.7);
+      tl.fromTo("#shot3 .fake > *, #shot3 .chip", {opacity:0, y:30, scale:0.8}, {opacity:1, y:0, scale:1, duration:0.5, ease:"back.out(1.8)", stagger:0.06}, 21.85);
+      tl.to("#rail-track", {y:-354, duration:0.55, ease:"power3.inOut"}, 21.45);
+      tl.fromTo("#rail3 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.8, ease:"power2.out"}, 21.9);
+      tl.to("#rail2 .solid", {opacity:0.0, duration:0.3}, 21.7);
+      tl.set("#num", {textContent:"STEP 4 OF 4"}, 21.7);
+      tl.set("#cap3", {opacity:1}, 21.7);
+      tl.fromTo("#cap3 .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.9, ease:"power2.out"}, 22.05);
+      tl.fromTo("#cap3 .ghost", {opacity:0}, {opacity:0.18, duration:0.3}, 21.8);
+      tl.to("#cap3", {opacity:0, duration:0.2}, 25.93);
+      tl.to("#steps-scene", {scale:1.25, opacity:0, filter:"blur(12px)", duration:0.4, ease:"power3.in"}, 25.73);
+      tl.fromTo("#flash", {opacity:1}, {opacity:0, duration:0.4, immediateRender:false}, 26.13);
+      tl.fromTo(".oword", {opacity:0, y:80, rotationX:-90}, {opacity:1, y:0, rotationX:0, duration:0.45, ease:"back.out(1.7)", stagger:0.22}, 26.23);
+      tl.to("#owords", {opacity:0, scale:0.85, filter:"blur(10px)", duration:0.35}, 28.43);
+      tl.fromTo(".disc", {y:-400, opacity:0, rotationX:70}, {y:0, opacity:1, rotationX:70, duration:0.6, ease:"bounce.out", stagger:0.12}, 28.53);
+      tl.to("#stack", {rotationY:360, duration:3.5, ease:"none"}, 28.63);
+      tl.fromTo("#endlogo", {opacity:0, scale:0.8}, {opacity:1, scale:1, duration:0.6, ease:"power3.out"}, 29.03);
+      tl.fromTo("#endline .solid", {"--p":"-20%"}, {"--p":"120%", duration:0.9}, 29.43);
+      tl.fromTo("#endline .ghost", {opacity:0}, {opacity:0.2, duration:0.3}, 29.23);
+      tl.fromTo("#endurl", {opacity:0, y:20}, {opacity:1, y:0, duration:0.5}, 29.93);
+      window.__timelines["paya-bridge"] = tl;
+      tl.seek(0);
+    </script>
+  </body>
+</html>

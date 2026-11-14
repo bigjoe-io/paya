@@ -1,0 +1,13 @@
+{
+  "name": "paya-near-trading-agent",
+  "private": true,
+  "type": "module",
+  "description": "A minimal NEAR trading agent on the Paya Agent API: quote, swap and bridge from your own NEAR account.",
+  "dependencies": {
+    "near-api-js": "^7.5.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.3"
+  }
+}

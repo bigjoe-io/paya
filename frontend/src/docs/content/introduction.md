@@ -1,12 +1,12 @@
 ---
 title: What is Paya
-summary: Turn NEAR into money in your bank account, or buy NEAR with a bank transfer. No wallet to connect.
+summary: Buy NEAR with a bank transfer, cash it out to your bank, swap tokens, bridge to other chains, or ask the AI assistant. Email sign-in or your own wallet.
 group: Get started
 order: 1
 tags: quickstart, how-it-works, supported-countries
 ---
 
-Paya moves money between **NEAR** and **your bank account** in five African countries. You sign in with your email, link your bank once, and get your own NEAR address. Send NEAR to that address and it's paid to your bank automatically.
+Paya moves money between **NEAR** and **your bank account** (Nigeria live; more African countries coming). Sign in with your email to get your own NEAR address, or connect your own NEAR wallet. Buy, sell, swap, bridge, or just ask Paya in plain words.
 
 ## What you can do
 
@@ -14,7 +14,10 @@ Paya moves money between **NEAR** and **your bank account** in five African coun
 |---|---|---|
 | **Cash out** | NEAR → your local currency, paid to your bank | 5–10 minutes |
 | **Buy** | Bank transfer → NEAR in your Paya balance | 5–15 minutes after your transfer |
-| **Send** | NEAR from your Paya balance → any NEAR wallet or exchange | Seconds |
+| **Send** | NEAR from your Paya balance → any NEAR wallet, `.near` name or exchange | Seconds |
+| **Swap** | NEAR ⇄ USDC, USDT, BTC, ETH and more on NEAR, via NEAR Intents | Under a minute |
+| **Bridge** | NEAR ⇄ Solana, Ethereum, Base, Bitcoin and 6 more chains | A few minutes |
+| **Ask Paya** | An AI assistant that prepares any of the above for you to confirm | Instant |
 
 ## Where it works
 
@@ -22,7 +25,7 @@ Nigeria (NGN) today, with Ghana, Kenya, Tanzania, South Africa and US dollars co
 
 ## What makes it simple
 
-- **No wallet to connect.** Your account comes with its own NEAR address. Send NEAR to it from any wallet or exchange.
+- **No wallet needed, but welcome.** Your account comes with its own NEAR address. Prefer your own wallet? Connect it under **Wallet** to swap and bridge from it.
 - **One bank, checked by name.** Every bank account is confirmed with the bank before it's used, so money only goes to the right person.
 - **Prices before you commit.** You see the rate and fees before every cash-out or purchase.
 - **Every step traceable.** Each order has a Support ID and the NEAR and Solana transaction IDs for each hop.

@@ -55,5 +55,6 @@ USDC is a digital US dollar. It's the bridge between NEAR and local currencies: 
 | | Role |
 |---|---|
 | **Paya** | Your account, your NEAR address, routing, and keeping each order on track |
-| **Exchange providers** | Converting NEAR ⇄ USDC, chosen per order through the Rubic aggregator |
+| **Exchange providers** | Converting NEAR ⇄ USDC for buys and cash-outs, chosen per order through the Rubic aggregator |
+| **NEAR Intents** | Token swaps on NEAR and bridges to and from other chains |
 | **PAJ** | Licensed payment partner: bank payouts, collections and account-name checks |

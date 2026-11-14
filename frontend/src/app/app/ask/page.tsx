@@ -30,7 +30,9 @@ export default function AskPage() {
   const [signIn, setSignIn] = useState(false);
   const end = useRef<HTMLDivElement>(null);
 
-  useEffect(() => end.current?.scrollIntoView({ behavior: "smooth", block: "end" }), [msgs, busy]);
+  useEffect(() => {
+    end.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+  }, [msgs, busy]);
 
   async function send(text: string) {
     const t = text.trim();
@@ -172,7 +174,7 @@ function ProposalCard({ p }: { p: Proposal }) {
         if (stop) return;
         if (s.status === "done") {
           setState("done");
-          setMsg("Done. It's in place.");
+          setMsg(p.kind === "swap" ? "Done. It's in your balance." : "Done. It's on its way to the recipient.");
           void refresh();
           return;
         }
