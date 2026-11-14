@@ -191,6 +191,12 @@ function Welcome({ onStart }: { onStart: () => void }) {
       >
         Get started
       </button>
+      <a
+        href="/app/wallet"
+        className="focus-ring mt-3 flex min-h-12 w-full items-center justify-center rounded-2xl border border-border text-sm font-medium hover:bg-card"
+      >
+        Or connect a NEAR wallet to swap tokens
+      </a>
     </section>
   );
 }

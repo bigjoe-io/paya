@@ -2,7 +2,7 @@
 
 import { useEffect, useId, useState } from "react";
 import { ArrowUpDown, CheckCircle2, ChevronDown, Loader2, TriangleAlert } from "lucide-react";
-import { api, type Holding, type SwapToken, type TokenSwapQuote } from "@/lib/api";
+import { api, type Holding, type SwapToken, type TokenSwapQuote, type TokenSwapStatus } from "@/lib/api";
 import { TokenAvatar, TokenPicker, fmtUsd, tokenLabel } from "@/components/app/tokens";
 import { cn } from "@/lib/utils";
 
@@ -15,8 +15,34 @@ type Phase =
   | { name: "done"; amountOut: number; to: SwapToken }
   | { name: "refunded" | "failed" };
 
-/** Swap between NEAR and tokens on NEAR (e.g. USDC). Everything stays in the user's Paya balance. */
-export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; onChanged: () => void }) {
+/** Where a swap runs: the user's Paya account (default) or a connected wallet that signs itself. */
+export type SwapEngine = {
+  quote: (from: string, to: string, amount: number) => Promise<TokenSwapQuote>;
+  start: (from: string, to: string, amount: number) => Promise<{ depositAddress: string; amountOut: number }>;
+  status: (depositAddress: string) => Promise<TokenSwapStatus>;
+  /** Shown under "You get". */
+  destination: string;
+  /** Label while the swap is being sent (e.g. "Approve in your wallet…"). */
+  sending?: string;
+};
+
+export const accountEngine: SwapEngine = {
+  quote: (f, t, a) => api.tokenSwapQuote(f, t, a),
+  start: (f, t, a) => api.tokenSwap({ from: f, to: t, amount: a }),
+  status: (d) => api.tokenSwapStatus(d),
+  destination: "Stays in your Paya balance",
+};
+
+/** Swap between NEAR and tokens on NEAR (e.g. USDC). */
+export function TokenSwapCard({
+  holdings,
+  onChanged,
+  engine = accountEngine,
+}: {
+  holdings: Holding[];
+  onChanged: () => void;
+  engine?: SwapEngine;
+}) {
   const ids = useId();
   const [tokens, setTokens] = useState<SwapToken[] | null>(null);
   const [fromId, setFromId] = useState("near");
@@ -43,8 +69,8 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
     if (!ready) return;
     let cancelled = false;
     const t = setTimeout(() => {
-      api
-        .tokenSwapQuote(fromId, toId, value)
+      engine
+        .quote(fromId, toId, value)
         .then((q) => !cancelled && setQuoted({ key, q, error: null }))
         .catch((e: Error) => !cancelled && setQuoted({ key, q: null, error: e.message }));
     }, 450);
@@ -52,7 +78,7 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
       cancelled = true;
       clearTimeout(t);
     };
-  }, [key, ready, fromId, toId, value]);
+  }, [key, ready, fromId, toId, value, engine]);
   const current = quoted?.key === key ? quoted : null;
   const quote = ready ? (current?.q ?? null) : null;
   const quoting = ready && !current;
@@ -64,7 +90,7 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
     let stop = false;
     const tick = async () => {
       try {
-        const s = await api.tokenSwapStatus(phase.depositAddress);
+        const s = await engine.status(phase.depositAddress);
         if (stop) return;
         if (s.status === "done") {
           setPhase({ name: "done", amountOut: phase.amountOut, to: phase.to });
@@ -84,7 +110,7 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
       stop = true;
       clearTimeout(t);
     };
-  }, [phase, onChanged]);
+  }, [phase, onChanged, engine]);
 
   const max = quote?.max ?? null;
   const tooMuch = max !== null && value > max + 1e-12;
@@ -94,7 +120,7 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
     setPhase({ name: "swapping" });
     setError(null);
     try {
-      const r = await api.tokenSwap({ from: fromId, to: toId, amount: value });
+      const r = await engine.start(fromId, toId, value);
       setPhase({ name: "processing", depositAddress: r.depositAddress, amountOut: r.amountOut, to });
       setAmount("");
       onChanged();
@@ -108,8 +134,8 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
     // Ask for a quote with the full balance; the server answers with the real maximum.
     const bal = held?.amount ?? 0;
     if (!from || bal <= 0) return;
-    api
-      .tokenSwapQuote(fromId, toId, bal)
+    engine
+      .quote(fromId, toId, bal)
       .then((q) => setAmount(String(Math.floor(q.max * 1e6) / 1e6)))
       .catch((e: Error) => setError(e.message));
   }
@@ -136,10 +162,10 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
         </h2>
         <p className="mt-1 text-sm text-muted-foreground text-pretty">
           {phase.name === "processing"
-            ? `About ${phase.amountOut.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${tokenLabel(phase.to)} is on its way to your balance. Usually under a minute.`
+            ? `About ${phase.amountOut.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${tokenLabel(phase.to)} is on its way to your ${engine === accountEngine ? "balance" : "wallet"}. Usually under a minute.`
             : done
-              ? `${phase.amountOut.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${tokenLabel(phase.to)} is in your balance.`
-              : "Nothing was lost: the tokens went back to your balance."}
+              ? `${phase.amountOut.toLocaleString("en-US", { maximumFractionDigits: 4 })} ${tokenLabel(phase.to)} is in your ${engine === accountEngine ? "balance" : "wallet"}.`
+              : `Nothing was lost: the tokens went back to ${engine === accountEngine ? "your balance" : "your wallet"}.`}
         </p>
         {phase.name !== "processing" ? (
           <button
@@ -157,7 +183,7 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
   const label = !from || !to
     ? "Loading…"
     : phase.name === "swapping"
-      ? "Swapping…"
+      ? (engine.sending ?? "Swapping…")
       : !value
         ? "Enter an amount"
         : tooMuch
@@ -244,7 +270,7 @@ export function TokenSwapCard({ holdings, onChanged }: { holdings: Holding[]; on
           {tokenButton(to, "to")}
         </div>
         <p className="mt-2 text-xs text-muted-foreground">
-          Stays in your Paya balance
+          {engine.destination}
           {quote?.amountOutUsd ? ` · ${fmtUsd(quote.amountOutUsd)}` : ""}
         </p>
       </div>

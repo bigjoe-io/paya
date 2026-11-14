@@ -14,7 +14,7 @@ import { audit, last4 } from "./audit.js";
 import { accountView, cashOut, pajTokenOf, requirePaj, setAuto, setBank, signIn, withdraw } from "./accounts.js";
 import { createSession, readSession } from "./secrets.js";
 import { redeem, verifyAccess } from "./access.js";
-import { holdings, quoteSwap, startSwap, swapStatus, tokens } from "./tokenswap.js";
+import { holdings, quoteSwap, startSwap, swapStatus, tokens, walletQuote, walletStatus, walletSubmit, walletSwap } from "./tokenswap.js";
 import { waitlist } from "./db.js";
 import crypto from "node:crypto";
 import { accountExists, fundFromTreasury, toYocto } from "./near.js";
@@ -299,6 +299,26 @@ app.post("/me/token-swap", async (c) => {
     throw e;
   }
 });
+
+// Connected NEAR wallets (no Paya account): quotes, the transactions to sign, and status.
+const walletQ = z.object({ account: z.string().min(2).max(64), from: z.string().min(2).max(80), to: z.string().min(2).max(80) });
+app.get("/wallet/holdings", async (c) => {
+  const a = z.string().min(2).max(64).parse(c.req.query("account")).toLowerCase();
+  return c.json(await holdings(a));
+});
+app.get("/wallet/quote", async (c) => {
+  const q = walletQ.extend({ amount: z.coerce.number().positive().max(1e12) }).parse(c.req.query());
+  return c.json(await walletQuote(q.account, q.from, q.to, q.amount));
+});
+app.post("/wallet/swap", async (c) => {
+  const b = walletQ.extend({ amount: z.number().positive().max(1e12) }).parse(await c.req.json());
+  return c.json(await walletSwap(b.account, b.from, b.to, b.amount));
+});
+app.post("/wallet/swap/submit", async (c) => {
+  const b = z.object({ depositAddress: z.string().min(10).max(128), txHash: z.string().min(20).max(100) }).parse(await c.req.json());
+  return c.json(await walletSubmit(b.depositAddress, b.txHash));
+});
+app.get("/wallet/swap/:deposit", async (c) => c.json(await walletStatus(c.req.param("deposit"))));
 
 app.get("/me/token-swap/:deposit", async (c) => c.json(await swapStatus(me(c, true), c.req.param("deposit"))));
 

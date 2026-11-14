@@ -180,6 +180,10 @@ export type TokenSwapQuote = {
   max: number;
   etaSeconds: number | null;
 };
+export type WalletTx = {
+  receiverId: string;
+  actions: { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }[];
+};
 export type TokenSwapStatus = { status: "processing" | "done" | "refunded" | "failed"; raw: string };
 
 export const api = {
@@ -237,6 +241,17 @@ export const api = {
   tokenSwap: (b: { from: string; to: string; amount: number }) =>
     request<{ depositAddress: string; txHash: string; amountOut: number; to: string }>("/me/token-swap", { method: "POST", body: JSON.stringify(b) }),
   tokenSwapStatus: (depositAddress: string) => request<TokenSwapStatus>(`/me/token-swap/${depositAddress}`),
+
+  walletHoldings: (account: string) => request<{ holdings: Holding[]; totalUsd: number }>(`/wallet/holdings?account=${encodeURIComponent(account)}`),
+  walletQuote: (account: string, from: string, to: string, amount: number) =>
+    request<TokenSwapQuote>(
+      `/wallet/quote?account=${encodeURIComponent(account)}&from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}&amount=${amount}`,
+    ),
+  walletSwap: (b: { account: string; from: string; to: string; amount: number }) =>
+    request<{ depositAddress: string; amountOut: number; transactions: WalletTx[] }>("/wallet/swap", { method: "POST", body: JSON.stringify(b) }),
+  walletSubmit: (depositAddress: string, txHash: string) =>
+    request<{ ok: true }>("/wallet/swap/submit", { method: "POST", body: JSON.stringify({ depositAddress, txHash }) }),
+  walletSwapStatus: (depositAddress: string) => request<TokenSwapStatus>(`/wallet/swap/${depositAddress}`),
 };
 
 export function formatFiat(amount: number, currency: Pick<Currency, "symbol" | "code"> | string) {

@@ -12,6 +12,7 @@ import {
   ensureRegistered,
   ftBalance,
   ftMetadata,
+  isRegistered,
   INTENTS_FT_COST,
   INTENTS_NEAR_COST,
   REGISTER_COST,
@@ -140,7 +141,7 @@ type OneClickQuote = {
   };
 };
 
-async function oneClickQuote(u: User, from: Token, to: Token, raw: bigint, dry: boolean) {
+async function oneClickQuote(address: string, from: Token, to: Token, raw: bigint, dry: boolean) {
   const r = await fetch(`${API}/quote`, {
     method: "POST",
     headers: headers(),
@@ -152,9 +153,9 @@ async function oneClickQuote(u: User, from: Token, to: Token, raw: bigint, dry: 
       depositType: "ORIGIN_CHAIN",
       destinationAsset: assetOf(to.id),
       amount: raw.toString(),
-      refundTo: u.address,
+      refundTo: address,
       refundType: "ORIGIN_CHAIN",
-      recipient: u.address,
+      recipient: address,
       recipientType: "DESTINATION_CHAIN",
       deadline: new Date(Date.now() + 20 * 60_000).toISOString(),
       referral: "paya",
@@ -187,7 +188,7 @@ export async function quoteSwap(u: User, fromId: string, toId: string, amount: n
   const max = await spendable(u, from);
   const raw = toRaw(amount, from.decimals);
   if (raw <= 0n) throw new Error("Enter an amount.");
-  const q = await oneClickQuote(u, from, to, raw, true);
+  const q = await oneClickQuote(u.address, from, to, raw, true);
   return {
     from: from.id,
     to: to.id,
@@ -221,7 +222,7 @@ export function startSwap(u: User, fromId: string, toId: string, amount: number)
 
     try {
       await ensureRegistered(u.key_index, contractOf(to.id));
-      const q = await oneClickQuote(u, from, to, raw, false);
+      const q = await oneClickQuote(u.address, from, to, raw, false);
       if (!q.depositAddress) throw new Error("No swap price is available right now. Try again in a moment.");
       const txHash =
         from.id === NEAR_ID
@@ -255,3 +256,106 @@ export async function swapStatus(u: User, depositAddress: string) {
   return { status: s === "SUCCESS" ? "done" : s === "REFUNDED" ? "refunded" : s === "FAILED" ? "failed" : "processing", raw: s };
 }
 
+
+/* ---------- connected wallets (no Paya account): the wallet signs, tokens come back to it ---------- */
+
+const NAMED_OR_IMPLICIT = /^(([a-z\d]+[-_])*[a-z\d]+\.)*([a-z\d]+[-_])*[a-z\d]+$/;
+const WALLET_KEEP = toYocto(0.08); // gas for the wallet's transactions + storage + what wallets keep back
+
+function checkAccount(account: string) {
+  const a = account.trim().toLowerCase();
+  if (a.length < 2 || a.length > 64 || !NAMED_OR_IMPLICIT.test(a)) throw new Error("That isn't a NEAR account.");
+  return a;
+}
+
+async function walletSpendable(account: string, from: Token): Promise<bigint> {
+  if (from.id === NEAR_ID) {
+    const { available } = await balances(account);
+    return available > WALLET_KEEP ? available - WALLET_KEEP : 0n;
+  }
+  return ftBalance(from.id, account);
+}
+
+export async function walletQuote(account: string, fromId: string, toId: string, amount: number): Promise<SwapQuote> {
+  const a = checkAccount(account);
+  if (fromId === toId) throw new Error("Pick two different tokens.");
+  const [from, to] = await Promise.all([tokenById(fromId), tokenById(toId)]);
+  const raw = toRaw(amount, from.decimals);
+  if (raw <= 0n) throw new Error("Enter an amount.");
+  const [max, q] = await Promise.all([walletSpendable(a, from), oneClickQuote(a, from, to, raw, true)]);
+  return {
+    from: from.id,
+    to: to.id,
+    amountIn: amount,
+    amountOut: Number(q.amountOut) / 10 ** to.decimals,
+    minOut: Number(q.minAmountOut) / 10 ** to.decimals,
+    amountInUsd: q.amountInUsd ? Number(q.amountInUsd) : null,
+    amountOutUsd: q.amountOutUsd ? Number(q.amountOutUsd) : null,
+    max: Number(max) / 10 ** from.decimals,
+    etaSeconds: q.timeEstimate ?? null,
+  };
+}
+
+export type WalletTx = {
+  receiverId: string;
+  actions: { type: "FunctionCall"; params: { methodName: string; args: object; gas: string; deposit: string } }[];
+};
+const fc = (methodName: string, args: object, deposit: string, gas = "30000000000000") => ({
+  type: "FunctionCall" as const,
+  params: { methodName, args, gas, deposit },
+});
+const STORAGE = "1250000000000000000000"; // 0.00125 NEAR
+
+/**
+ * A live quote plus the transactions the wallet signs: register the wallet on the token it will
+ * receive (if needed), then send the input to the NEAR Intents deposit address.
+ */
+export async function walletSwap(account: string, fromId: string, toId: string, amount: number) {
+  const a = checkAccount(account);
+  if (fromId === toId) throw new Error("Pick two different tokens.");
+  const [from, to] = await Promise.all([tokenById(fromId), tokenById(toId)]);
+  const raw = toRaw(amount, from.decimals);
+  if (raw <= 0n) throw new Error("Enter an amount.");
+  const max = await walletSpendable(a, from);
+  if (raw > max) throw new Error(`You can swap up to ${(Number(max) / 10 ** from.decimals).toFixed(4)} ${from.symbol} from this wallet.`);
+  const q = await oneClickQuote(a, from, to, raw, false);
+  if (!q.depositAddress) throw new Error("No swap price is available right now. Try again in a moment.");
+  const dep = q.depositAddress;
+  const txs: WalletTx[] = [];
+  if (to.id !== NEAR_ID && !(await isRegistered(to.id, a))) txs.push({ receiverId: to.id, actions: [fc("storage_deposit", { account_id: a, registration_only: true }, STORAGE)] });
+  if (from.id === NEAR_ID) {
+    txs.push({
+      receiverId: wrapContract(),
+      actions: [
+        fc("storage_deposit", { registration_only: true }, STORAGE),
+        fc("storage_deposit", { account_id: dep, registration_only: true }, STORAGE),
+        fc("near_deposit", {}, raw.toString()),
+        fc("ft_transfer", { receiver_id: dep, amount: raw.toString(), memo: "paya swap" }, "1"),
+      ],
+    });
+  } else {
+    txs.push({
+      receiverId: from.id,
+      actions: [
+        fc("storage_deposit", { account_id: dep, registration_only: true }, STORAGE),
+        fc("ft_transfer", { receiver_id: dep, amount: raw.toString(), memo: "paya swap" }, "1"),
+      ],
+    });
+  }
+  audit("wallet_swap_quoted", a, { from: from.symbol, to: to.symbol, amount });
+  log("swap", `wallet ${a.slice(0, 12)}… ${amount} ${from.symbol} → ${to.symbol} (${dep.slice(0, 8)}…)`);
+  return { depositAddress: dep, amountOut: Number(q.amountOut) / 10 ** to.decimals, transactions: txs };
+}
+
+/** The wallet sent the deposit: tell 1Click so it starts straight away. */
+export async function walletSubmit(depositAddress: string, txHash: string) {
+  await fetch(`${API}/deposit/submit`, { method: "POST", headers: headers(), body: JSON.stringify({ txHash, depositAddress }) }).catch(() => {});
+  return { ok: true };
+}
+
+export async function walletStatus(depositAddress: string) {
+  const r = await fetch(`${API}/status?depositAddress=${encodeURIComponent(depositAddress)}`, { headers: headers() });
+  const j = (await r.json().catch(() => ({}))) as { status?: string };
+  const s = j.status ?? "PENDING_DEPOSIT";
+  return { status: s === "SUCCESS" ? "done" : s === "REFUNDED" ? "refunded" : s === "FAILED" ? "failed" : "processing", raw: s };
+}

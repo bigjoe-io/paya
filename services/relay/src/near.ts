@@ -173,6 +173,11 @@ export async function ftMetadata(contract: string): Promise<FtMeta | null> {
   return v;
 }
 
+/** Whether `account` can already receive token `contract`. */
+export async function isRegistered(contract: string, account: string) {
+  return Boolean(await view<{ total: string } | null>(contract, "storage_balance_of", { account_id: account }));
+}
+
 /** Register the user on a token so they can receive it (skipped if already registered). */
 export async function ensureRegistered(i: number, contract: string) {
   const me = addressFor(i);
