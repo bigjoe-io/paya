@@ -20,7 +20,6 @@ const TABS = [
   { id: "buy", label: "Buy", soon: false },
   { id: "sell", label: "Sell", soon: false },
   { id: "swap", label: "Swap", soon: false },
-  { id: "bridge", label: "Bridge", soon: true },
 ];
 
 export default function SwapPage() {
@@ -117,7 +116,7 @@ export default function SwapPage() {
           </section>
         ) : (
           <>
-            <div role="tablist" aria-label="Mode" className="mt-8 grid grid-cols-4 gap-1 rounded-2xl border border-border bg-card p-1">
+            <div role="tablist" aria-label="Mode" className="mt-8 grid grid-cols-3 gap-1 rounded-2xl border border-border bg-card p-1">
               {TABS.map((t) => (
                 <button
                   key={t.id}
@@ -189,13 +188,13 @@ function Welcome({ onStart }: { onStart: () => void }) {
         onClick={onStart}
         className="focus-ring mt-6 min-h-14 w-full rounded-2xl bg-foreground text-base font-medium text-background hover:bg-foreground/90"
       >
-        Get started
+        Sign in with email
       </button>
       <a
         href="/app/wallet"
         className="focus-ring mt-3 flex min-h-12 w-full items-center justify-center rounded-2xl border border-border text-sm font-medium hover:bg-card"
       >
-        Or connect a NEAR wallet to swap tokens
+        Connect a NEAR wallet
       </a>
     </section>
   );

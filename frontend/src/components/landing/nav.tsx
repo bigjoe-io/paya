@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { Logo } from "@/components/logo";
-import { WaitlistButton } from "@/components/landing/waitlist";
+import { OpenAppButton } from "@/components/landing/open-app";
 
 const links = [
   { href: "/#features", label: "Features" },
@@ -34,7 +34,7 @@ export function Nav() {
           ))}
         </ul>
 
-        <WaitlistButton className="min-h-10 px-5" source="nav" />
+        <OpenAppButton className="min-h-10 px-5" />
       </nav>
     </header>
   );

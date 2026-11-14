@@ -94,4 +94,4 @@ No. Paya gives you your own NEAR address when you sign in with your email. There
 
 ### Is Paya available outside Nigeria?
 
-Naira is live today. Kenya, Ghana, Tanzania and South Africa are coming next. [Join the waitlist](https://www.usepaya.xyz) to hear when your country goes live.
+Naira is live today. Kenya, Ghana, Tanzania and South Africa are coming next. Follow [@usepaya](https://x.com/usepaya) to hear when your country goes live.

@@ -52,7 +52,7 @@ You don't need to know any of that to use Paya — but it means every step is re
 
 Nigeria is live today, paying out to Nigerian banks and fintech accounts. Kenya, Ghana, Tanzania and South Africa are next.
 
-If you're outside Nigeria, [join the waitlist](https://www.usepaya.xyz) and we'll let you know as soon as your country goes live.
+If you're outside Nigeria, keep an eye on [usepaya.xyz](https://www.usepaya.xyz): we'll announce each country as it goes live.
 
 ## Frequently asked questions
 

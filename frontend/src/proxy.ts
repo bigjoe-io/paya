@@ -23,7 +23,8 @@ async function valid(token: string, secret: string) {
 
 export async function proxy(request: NextRequest) {
   const secret = process.env.ACCESS_SECRET;
-  if (!secret) return NextResponse.next();
+  // Paya is open to everyone; set ACCESS_GATE=on to bring back tester-only access.
+  if (!secret || process.env.ACCESS_GATE !== "on") return NextResponse.next();
   const token = request.cookies.get(COOKIE)?.value;
   if (token && (await valid(decodeURIComponent(token), secret))) return NextResponse.next();
   return NextResponse.redirect(new URL("/", request.url));

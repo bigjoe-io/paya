@@ -1,5 +1,5 @@
 import { LogoMark } from "@/components/logo";
-import { WaitlistButton } from "@/components/landing/waitlist";
+import { OpenAppButton } from "@/components/landing/open-app";
 
 export function FinalCta() {
   return (
@@ -14,9 +14,9 @@ export function FinalCta() {
           with Paya today.
         </h2>
         <p className="mt-4 text-lg text-muted-foreground text-pretty">
-          One click from NEAR to cash in your bank account.
+          Buy, sell and swap NEAR. Cash out to your bank in minutes.
         </p>
-        <WaitlistButton className="mt-8" source="cta" />
+        <OpenAppButton className="mt-8" />
       </div>
     </section>
   );

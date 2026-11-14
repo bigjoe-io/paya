@@ -38,6 +38,8 @@ app.use("*", (c, next) => (c.req.path.startsWith("/admin") ? next() : publicCors
  */
 const OPEN = [/^\/health$/, /^\/waitlist$/, /^\/access\//, /^\/webhooks\//, /^\/admin(\/|$)/, /^\/currencies$/, /^\/prices$/];
 app.use("*", async (c, next) => {
+  // Paya is open to everyone; set ACCESS_GATE=on to bring back tester-only access.
+  if (process.env.ACCESS_GATE !== "on") return next();
   if (c.req.method === "OPTIONS" || OPEN.some((r) => r.test(c.req.path))) return next();
   if (!verifyAccess(c.req.header("x-paya-access"))) return c.json({ error: "Paya is in private testing. Join the waitlist at usepaya.xyz.", code: "NO_ACCESS" }, 403);
   return next();

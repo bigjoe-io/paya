@@ -1,5 +1,5 @@
 import { ArrowDown, Check, ChevronDown } from "lucide-react";
-import { WaitlistButton } from "@/components/landing/waitlist";
+import { OpenAppButton } from "@/components/landing/open-app";
 import { NearIcon } from "@/components/landing/icons";
 import { COUNTRIES } from "@/components/landing/countries";
 import { ElectricLines, STONE_TEXTURE } from "@/components/landing/fx";
@@ -9,15 +9,15 @@ export function Hero() {
     <section className="container-page pt-14 pb-6 md:pt-20">
       <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
         <h1 className="text-4xl font-semibold tracking-tight text-balance md:text-5xl lg:text-6xl">
-          One click from NEAR to fiat.
+          NEAR to your bank. And back.
         </h1>
         <p className="mt-4 max-w-md text-lg text-muted-foreground text-pretty">
-          Sign up with your email, link your bank, and send NEAR to your own Paya address. Cash lands in your local currency in minutes.
+          Sign in with your email or connect your NEAR wallet. Buy NEAR with a bank transfer, cash it out to your bank, and swap any token on NEAR.
         </p>
-        <WaitlistButton className="mt-8" source="hero" />
+        <OpenAppButton className="mt-8" />
         <p className="mt-4 text-sm text-muted-foreground">
           <span aria-hidden="true">{COUNTRIES.map((c) => c.flag).join(" ")}</span>
-          <span className="sr-only">Available in {COUNTRIES.map((c) => c.country).join(", ")}</span>
+          <span className="sr-only">Live in Nigeria; {COUNTRIES.filter((c) => c.country !== "Nigeria").map((c) => c.country).join(", ")} coming next</span>
         </p>
       </div>
 
@@ -57,7 +57,7 @@ function Phone() {
         <div className="mt-3 grid grid-cols-3 rounded-xl bg-neutral-200/70 p-0.5 text-[10px] font-medium">
           <span className="py-1.5 text-center text-neutral-400">Buy</span>
           <span className="rounded-[10px] bg-white py-1.5 text-center shadow-sm">Sell</span>
-          <span className="py-1.5 text-center text-neutral-400">Bridge</span>
+          <span className="py-1.5 text-center text-neutral-400">Swap</span>
         </div>
 
         <div className="mt-2.5 rounded-2xl border border-neutral-200 bg-white p-3">

@@ -2,11 +2,12 @@
 
 > ## 🧑‍⚖️ Judges: try Paya live
 >
-> **1. Open [usepaya.xyz/admin](https://www.usepaya.xyz/admin)**
-> **2. Enter the access code: `PAYA-JUDG-ES26`**
-> **3. Sign in with your email and you're in the app.**
+> **Open [usepaya.xyz/app](https://www.usepaya.xyz/app). No access code needed.**
 >
-> The code works for everyone and doesn't expire. Paya is live with real money: buying or cashing out moves real funds.
+> - **Sign in with your email** for your own Paya account and NEAR address: buy NEAR with a bank transfer, cash out to a Nigerian bank, swap tokens.
+> - **Or connect a NEAR wallet** (HOT, Meteor, Nightly, …) under **Wallet swap** to swap tokens in your own wallet via NEAR Intents.
+>
+> Paya is live with real money: buying, cashing out and swapping move real funds.
 
 ![Paya app: buy NEAR with naira by bank transfer](docs/app-screenshot.png)
 
