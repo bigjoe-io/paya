@@ -5,13 +5,16 @@
 > ## 🧑‍⚖️ Judges: try Paya live
 >
 > **Open [usepaya.xyz/app](https://www.usepaya.xyz/app). No access code needed.**
+> 
+> docs - https://www.usepaya.xyz/docs
 >
 > - **Sign in with your email** to get your own Paya account and NEAR address.
 > - **Or connect a NEAR wallet** (HOT, Meteor, Nightly, MyNEAR Wallet, …) under **Wallet**.
 >
 > Paya is live on NEAR mainnet with real money: buying, cashing out, swapping and bridging move real funds.
 
-![Paya app: buy NEAR with naira by bank transfer](docs/app-screenshot.png)
+![Paya app: buy NEAR with naira by bank transfer]
+(<img width="1799" height="1006" alt="Screenshot 2026-11-15 at 8 37 46 AM" src="https://github.com/user-attachments/assets/edd9a1f7-2ee2-4521-ae0b-3057b5de2364" />)
 
 **Paya moves money between NEAR and African bank accounts, in both directions, and across chains.** Sign in with your email (no seed phrase) or connect your own wallet. Buy NEAR with a bank transfer, cash NEAR out to your bank, swap any token on NEAR, bridge to 10 other chains, launch and trade meme coins, or ask the built-in AI assistant to do it for you. Developers and AI agents can use the same rails through a public, non-custodial API.
 
